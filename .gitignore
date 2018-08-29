@@ -1,0 +1,6 @@
+# Ignore Finder garbage
+.DS_Store
+
+# Built files
+*.o
+a.out

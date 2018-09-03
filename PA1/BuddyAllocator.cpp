@@ -1,33 +1,43 @@
-/* 
+/*
     File: my_allocator.cpp
 */
 #include "BuddyAllocator.h"
+
 #include <iostream>
-using namespace std;
 
-BuddyAllocator::BuddyAllocator (uint _basic_block_size, uint _total_memory_length){
-	
+/**
+ * Initialize the memory allocator.
+ */
+BuddyAllocator::BuddyAllocator(size_t _basicBlockSize, size_t _totalSize) :
+	basicBlockSz(_basicBlockSize), totalMemSz(_totalSize) {
+
 }
 
-BuddyAllocator::~BuddyAllocator (){
-	
+/**
+ * Cleans up the memory allocator.
+ */
+BuddyAllocator::~BuddyAllocator () {
+	// release memory area
+	if(this->mem) {
+		::free(mem);
+
+		this->mem = nullptr;
+	}
 }
 
-char* BuddyAllocator::alloc(uint _length) {
-  /* This preliminary implementation simply hands the call over the 
-     the C standard library! 
-     Of course this needs to be replaced by your implementation.
-  */
-  return new char [_length];
+
+
+char *BuddyAllocator::alloc(size_t length) {
+  return new char[length];
 }
 
-int BuddyAllocator::free(char* _a) {
-  /* Same here! */
-  delete _a;
+int BuddyAllocator::free(char *block) {
+  delete block;
   return 0;
 }
 
-void BuddyAllocator::debug (){
-  
-}
 
+ 
+void BuddyAllocator::debug() {
+
+}

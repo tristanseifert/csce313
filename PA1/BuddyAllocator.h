@@ -8,6 +8,8 @@
 
     Modified:
 
+	Resources:
+		See BuddyAllocator dot cpp
 */
 
 #ifndef _BuddyAllocator_h_
@@ -33,6 +35,9 @@ class BuddyAllocator {
 		// total amount of allocated memory
 		size_t totalMemSz;
 
+		// amount of memory we've satisfied allocations for
+		size_t allocationsSatisfied = 0;
+
 		// free list for each size
 		BlockHeader **freeList = nullptr;
 		size_t freeListLength;
@@ -41,6 +46,13 @@ class BuddyAllocator {
 		void *mem = nullptr;
 
 	private:
+		/// checks whether the free list contains the given block
+		bool freeListContainsBlock(BlockHeader *block);
+		/// inserts a block into the free list
+		bool insertBlockIntoFreeList(BlockHeader *block);
+		/// removes a block from the free list
+		bool removeBlockFromFreeList(BlockHeader *block);
+
 		/* private function you are required to implement
 		 this will allow you and us to do unit test */
 		BlockHeader* getbuddy(BlockHeader *addr);

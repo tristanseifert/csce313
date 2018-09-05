@@ -4,6 +4,7 @@
 	Resources:
 	- http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
 	- https://stackoverflow.com/questions/994593/how-to-do-an-integer-log2-in-c
+	- https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
 */
 #include "BuddyAllocator.h"
 
@@ -121,15 +122,90 @@ BlockHeader* BuddyAllocator::getbuddy(BlockHeader *block) {
 	return reinterpret_cast<BlockHeader *>(addr);
 }
 
-/*
- * Splits the specified block in half, then returns the first buddy.
+
+
+/**
+ * Checks whether the block exists in the free list.
  */
-BlockHeader* BuddyAllocator::split(BlockHeader* block) {
-	// remove this block from the free list
+bool BuddyAllocator::freeListContainsBlock(BlockHeader *block) {
 	size_t freeListIndex = freeListIndexForSize(block->size);
 
-	std::cout << "\tsplitting block " << std::hex << block << " at free list idx "
-		<< std::dec << freeListIndex << std::endl;
+	if(this->freeList[freeListIndex]) {
+		BlockHeader *current = this->freeList[freeListIndex];
+
+		if(current == block) {
+			return true;
+		}
+
+		// iterate through the list
+		while(current) {
+			// is this the block we're after?
+			if(current == block) {
+				return true;
+			}
+
+			// go to the next one
+			current = current->nextFree;
+		}
+	}
+
+	// if we get down here, we couldn't find it
+	return false;
+}
+
+/**
+ * Inserts this block into its free list.
+ */
+bool BuddyAllocator::insertBlockIntoFreeList(BlockHeader *block) {
+	// return if it's already in the free list
+	if(this->freeListContainsBlock(block)) {
+		throw std::runtime_error("attempting to insert block that's already in freelist");
+	}
+
+	// get index into the free list
+	size_t freeListIndex = freeListIndexForSize(block->size);
+
+	// if the freelist is empty, insert it at the head
+	if(this->freeList[freeListIndex] == nullptr) {
+		this->freeList[freeListIndex] = block;
+		block->nextFree = nullptr;
+
+		return true;
+	} else {
+		// traverse the free list til the end
+		BlockHeader *current = this->freeList[freeListIndex];
+
+		while(current) {
+			// is the next entry null?
+			if(current->nextFree == nullptr) {
+				// if so, insert this block there
+				current->nextFree = block;
+				// set this block's next pointer to null
+				block->nextFree = nullptr;
+
+				return true;
+			}
+
+			// go to the next one
+			current = current->nextFree;
+		}
+	}
+
+	// we should never get down here
+	return false;
+}
+
+/**
+ * Removes a block from a free list.
+ */
+bool BuddyAllocator::removeBlockFromFreeList(BlockHeader *block) {
+	// make sure this block is in the free list
+	if(!this->freeListContainsBlock(block)) {
+		throw std::runtime_error("attempting to remove block that's not in freelist");
+	}
+
+	// check the free list
+	size_t freeListIndex = freeListIndexForSize(block->size);
 
 	if(this->freeList[freeListIndex]) {
 		// handle the case where it's the first element
@@ -137,6 +213,7 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 			this->freeList[freeListIndex] = block->nextFree;
 
 			std::cout << "\t\tremoved block from free list index " << freeListIndex << std::endl;
+			return true;
 		} else {
 			// iterate through til we find this block
 			BlockHeader *current = this->freeList[freeListIndex];
@@ -148,6 +225,7 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 					current->nextFree = block->nextFree;
 
 					std::cout << "\t\tremoved block from free list index " << freeListIndex << std::endl;
+					return true;
 				}
 
 				// go to the next block
@@ -156,7 +234,57 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 		}
 	} else {
 		// the free list should have an entry, wtf
-		throw std::runtime_error("free list is corrupted");
+		throw std::runtime_error("freelist is corrupted");
+	}
+
+	// if we get down here, we couldn't remove it, wtf
+	return false;
+}
+
+
+
+/**
+ * Merges two adjacent blocks.
+ */
+BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
+	// ensure block2 comes after block1
+	if(block1 > block2) {
+		throw std::invalid_argument("block2 must come after block1, wtf are you doing");
+	}
+
+	// remove block2 from its free list
+	if(this->removeBlockFromFreeList(block2) == false) {
+		throw std::runtime_error("couldn't remove block2 from freelist");
+	}
+
+	// remove block1
+	if(this->removeBlockFromFreeList(block1) == false) {
+		throw std::runtime_error("couldn't remove block1 from freelist");
+	}
+
+	// cool, block1's size needs to be doubled
+	block1->size *= 2;
+
+	// TODO: clear the header of block2 please
+
+	// insert block1 into the freelist of the next level
+	if(this->insertBlockIntoFreeList(block1) == false) {
+		throw std::runtime_error("couldn't insert block1 into freelist");
+	}
+}
+
+/*
+ * Splits the specified block in half, then returns the first buddy.
+ */
+BlockHeader* BuddyAllocator::split(BlockHeader* block) {
+	size_t freeListIndex = freeListIndexForSize(block->size);
+
+	std::cout << "\tsplitting block " << std::hex << block << " at free list idx "
+		<< std::dec << freeListIndex << std::endl;
+
+	// remove this block from the free list
+	if(this->removeBlockFromFreeList(block) == false) {
+		throw std::runtime_error("couldn't remove block from freelist");
 	}
 
 	// update the first block's header
@@ -172,10 +300,13 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 	secondBlock->size = block->size;
 
 	// insert these two new blocks at the head of the free list
-	block->nextFree = secondBlock;
-	secondBlock->nextFree = this->freeList[(freeListIndex - 1)];
+	if(!this->insertBlockIntoFreeList(block)) {
+			throw std::runtime_error("couldn't insert block into freelist");
+	}
 
-	this->freeList[(freeListIndex - 1)] = block;
+	if(!this->insertBlockIntoFreeList(secondBlock)) {
+			throw std::runtime_error("couldn't insert block into freelist");
+	}
 
 	// std::cout << "\tnext block: " << std::hex << block->nextFree << "; second block next is " << secondBlock->nextFree << std::endl;
 
@@ -226,6 +357,9 @@ void *BuddyAllocator::alloc(size_t length) {
 
 		std::cout << "\treturning block sized " << header->size << std::endl;
 
+		// accounting
+		this->allocationsSatisfied += header->size;
+
 		// return the data
 		char *dataPtr = reinterpret_cast<char *>(header);
 		dataPtr += sizeof(BlockHeader);
@@ -259,6 +393,9 @@ void *BuddyAllocator::alloc(size_t length) {
 
 			std::cout << "\treturning block sized " << split->size << std::endl;
 
+			// accounting
+			this->allocationsSatisfied += split->size;
+
 			char *dataPtr = reinterpret_cast<char *>(split);
 			dataPtr += sizeof(BlockHeader);
 
@@ -269,7 +406,9 @@ void *BuddyAllocator::alloc(size_t length) {
 	// if we reach down here, we couldn't satisfy the request
 	this->debug();
 
-	std::cout << "couldn't satisfy allocation request :(" << std::endl;
+	std::cout << "couldn't satisfy allocation request; allocated "
+		<< this->allocationsSatisfied << " bytes of " << this->totalMemSz
+		<< std::endl;
 
 	return nullptr;
 }
@@ -284,6 +423,9 @@ int BuddyAllocator::free(void *block) {
 
 	BlockHeader *header = reinterpret_cast<BlockHeader *>(headerPtr);
 
+	// subtract this block's size from the amount of memory we've allocated
+	this->allocationsSatisfied -= header->size;
+
 	// clear the allocated flag
 	header->allocated = 0;
 
@@ -293,25 +435,9 @@ int BuddyAllocator::free(void *block) {
 	if(buddy->allocated == 0) {
 		this->merge(header, buddy);
 	} else {
-		// just put it back in its free list
-		size_t freeListIndex = this->freeListIndexForSize(header->size);
-
-		if(this->freeList[freeListIndex]) {
-			// iterate through the list and append it at the end
-			BlockHeader *current = this->freeList[freeListIndex];
-
-			while(current) {
-				// is this block's next entry null?
-				if(current->nextFree) {
-					current = current->nextFree;
-				} else {
-					// if so, insert this block
-					current->nextFree = header;
-					header->nextFree = nullptr;
-				}
-			}
-		} else {
-			this->freeList[freeListIndex] = header;
+		// put the block back in its free list
+		if(this->insertBlockIntoFreeList(header) == false) {
+			throw std::runtime_error("couldn't insert block into freelist");
 		}
 	}
 

@@ -1,4 +1,4 @@
-/* 
+/*
     File: ackerman.c
 
     Author: R. Bettati
@@ -6,8 +6,8 @@
             Texas A&M University
     Date  : 08/02/09
 
-    This file implements the function "ackerman(n,m)", which is used 
-    by the "memtest" program in MP1. 
+    This file implements the function "ackerman(n,m)", which is used
+    by the "memtest" program in MP1.
 
 */
 
@@ -16,7 +16,7 @@
 /*--------------------------------------------------------------------------*/
 
     /* -- (none) -- */
-    
+
 /*--------------------------------------------------------------------------*/
 /* INCLUDES */
 /*--------------------------------------------------------------------------*/
@@ -60,16 +60,16 @@ void Ackerman::test(BuddyAllocator *_ba) {
     int n, m;
     cout <<"  n = "; cin>>n;
     cout<<"  m = "; cin>>m;
-    if (!n || !m) 
+    if (!n || !m)
       break;
     struct timeval tp_start, tp_end; /* Used to compute elapsed time. */
     gettimeofday(&tp_start, 0); // start timer
     int result = Recurse(n, m); // compute ackerman value
     gettimeofday(&tp_end, 0);   // stop timer
-    
-    cout<<"Ackerman("<<n<<", "<<m<<"): "<<result<<endl; 
+
+    cout<<"Ackerman("<<n<<", "<<m<<"): "<<result<<endl;
     cout<<"Time taken: "<< get_time_diff(&tp_start, &tp_end) << endl;
-    cout<<"Number of allocate/free cycles: "<<this->num_allocations<<endl<<endl; 
+    cout<<"Number of allocate/free cycles: "<<this->num_allocations<<endl<<endl;
   }
 }
 
@@ -83,15 +83,19 @@ int Ackerman::Recurse(int a, int b) {
   if  (to_alloc < 4) to_alloc = 4;
 
   int result = 0;
-  char* mem = ba->alloc(to_alloc);  // request memory
+  char* mem = (char *) ba->alloc(to_alloc);  // request memory
   num_allocations++;
-  
+
+  cout << "allocated " << to_alloc << " bytes " << endl;
+
   if (mem != NULL) {
 
     // testing the allocated memory
     // generate a random byte to fill the allocated block of memory
     char c = rand() % 128;
     memset(mem, c, to_alloc * sizeof(char));
+
+    // cout << "writing " << std::hex << (int) c << dec << endl;
 
     if (a == 0)
       result = b + 1;
@@ -112,4 +116,3 @@ int Ackerman::Recurse(int a, int b) {
 
   return result;
 }
-

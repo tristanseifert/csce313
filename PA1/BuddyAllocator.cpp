@@ -252,12 +252,11 @@ BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
 		throw std::invalid_argument("block2 must come after block1, wtf are you doing");
 	}
 
-	// remove block2 from its free list
+	// remove block2 from the free list
 	if(this->removeBlockFromFreeList(block2) == false) {
 		throw std::runtime_error("couldn't remove block2 from freelist");
 	}
-
-	// remove block1
+	// remove block1 from the free list
 	if(this->removeBlockFromFreeList(block1) == false) {
 		throw std::runtime_error("couldn't remove block1 from freelist");
 	}
@@ -265,12 +264,21 @@ BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
 	// cool, block1's size needs to be doubled
 	block1->size *= 2;
 
-	// TODO: clear the header of block2 please
+	// clear the contents of the block
+	size_t clearSz = block1->size - sizeof(BlockHeader);
+
+	char *dataStart = reinterpret_cast<char *>(block1);
+	dataStart += sizeof(BlockHeader);
+
+	memset(dataStart, 0, clearSz);
 
 	// insert block1 into the freelist of the next level
 	if(this->insertBlockIntoFreeList(block1) == false) {
 		throw std::runtime_error("couldn't insert block1 into freelist");
 	}
+
+	// merged the block, yeet
+	return block1;
 }
 
 /*
@@ -347,15 +355,18 @@ void *BuddyAllocator::alloc(size_t length) {
 		std::cout << "\tupdating free list: next free block is " << std::hex
 			<< header->nextFree << std::dec << std::endl;
 
-		// update the free list
-		this->freeList[freeListIndex] = header->nextFree;
+		// remove it from the freelist
+		if(this->removeBlockFromFreeList(header) == false) {
+			throw std::runtime_error("couldn't remove block from freelist");
+		}
 
 		// mark the block as allocated
 		header->allocated = 1;
 
 		this->debug();
 
-		std::cout << "\treturning block sized " << header->size << std::endl;
+		std::cout << "\treturning block sized " << header->size << " at address "
+			<< std::hex << header << std::dec << std::endl;
 
 		// accounting
 		this->allocationsSatisfied += header->size;
@@ -391,7 +402,8 @@ void *BuddyAllocator::alloc(size_t length) {
 
 			this->debug();
 
-			std::cout << "\treturning block sized " << split->size << std::endl;
+			std::cout << "\treturning block sized " << split->size << " at address "
+				<< std::hex << split << std::dec << std::endl;
 
 			// accounting
 			this->allocationsSatisfied += split->size;
@@ -423,6 +435,9 @@ int BuddyAllocator::free(void *block) {
 
 	BlockHeader *header = reinterpret_cast<BlockHeader *>(headerPtr);
 
+	std::cout << "deallocating block " << std::hex << block << std::dec
+		<< std::endl;
+
 	// subtract this block's size from the amount of memory we've allocated
 	this->allocationsSatisfied -= header->size;
 
@@ -433,8 +448,13 @@ int BuddyAllocator::free(void *block) {
 	BlockHeader *buddy = this->getbuddy(header);
 
 	if(buddy->allocated == 0) {
+		std::cout << "\tits buddy is unallocated, merging" << std::endl;
+
 		this->merge(header, buddy);
 	} else {
+		std::cout << "\tits budy is allocated, inserting into freelist as is"
+			<< std::endl;
+
 		// put the block back in its free list
 		if(this->insertBlockIntoFreeList(header) == false) {
 			throw std::runtime_error("couldn't insert block into freelist");

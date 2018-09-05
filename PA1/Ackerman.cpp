@@ -108,6 +108,7 @@ int Ackerman::Recurse(int a, int b) {
     for (int i = 0; i < to_alloc; i++) {
         if (((char*)mem)[i] != c) {
             cout <<"Memory checking error!"<< endl;
+            exit(-1);
             break;
         }
     }

@@ -18,6 +18,8 @@
 #include <iostream>
 
 struct BlockHeader {
+	// is this block valid?
+	size_t		valid:1;
 	// is this block allocated?
 	size_t		allocated:1;
 	// how big is this block?

@@ -75,12 +75,15 @@ BuddyAllocator::BuddyAllocator(size_t _basicBlockSize, size_t _totalSize) :
 	// create the initial block
 	BlockHeader *initial = reinterpret_cast<BlockHeader *>(this->mem);
 
+	initial->valid = 1;
 	initial->allocated = 0;
 	initial->size = this->totalMemSz;
 	initial->nextFree = nullptr;
 
 	// plop it in the free list
-	this->freeList[(this->freeListLength - 1)] = initial;
+	if(this->insertBlockIntoFreeList(initial) == false) {
+		throw std::runtime_error("couldn't insert initial block into free list");
+	}
 
 	// print debug shit
 	this->debug();
@@ -171,7 +174,7 @@ bool BuddyAllocator::freeListContainsBlock(BlockHeader *block) {
  */
 bool BuddyAllocator::insertBlockIntoFreeList(BlockHeader *block) {
 	// find where this block is in the freelist
-	this->debugFindBlockInFreeList(block);
+	// this->debugFindBlockInFreeList(block);
 
 	// return if it's already in the free list
 	if(this->freeListContainsBlock(block)) {
@@ -216,7 +219,7 @@ bool BuddyAllocator::insertBlockIntoFreeList(BlockHeader *block) {
  */
 bool BuddyAllocator::removeBlockFromFreeList(BlockHeader *block) {
 	// find where this block is in the freelist
-	this->debugFindBlockInFreeList(block);
+	// this->debugFindBlockInFreeList(block);
 
 	// make sure this block is in the free list
 	if(!this->freeListContainsBlock(block)) {
@@ -268,7 +271,13 @@ bool BuddyAllocator::removeBlockFromFreeList(BlockHeader *block) {
 BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
 	// ensure block2 comes after block1
 	if(block1 > block2) {
-		throw std::invalid_argument("block2 must come after block1, wtf are you doing");
+		BlockHeader *first = block2;
+		BlockHeader *second = block1;
+
+		block1 = first;
+		block2 = second;
+
+		// throw std::invalid_argument("block2 must come after block1, wtf are you doing");
 	}
 
 	// remove block2 from the free list
@@ -282,6 +291,7 @@ BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
 
 	// cool, block1's size needs to be doubled
 	block1->size *= 2;
+	block1->valid = 1;
 
 	// clear the contents of the block
 	size_t clearSz = block1->size - sizeof(BlockHeader);
@@ -317,6 +327,7 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 	// update the first block's header
 	block->size /= 2;
 	block->allocated = 0;
+	block->valid = 1;
 
 	// create a new header halfway through
 	char *secondBlockPtr = reinterpret_cast<char *>(block);
@@ -328,14 +339,15 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 	// copy the properties from the other header
 	secondBlock->size = block->size;
 	secondBlock->allocated = block->allocated;
+	secondBlock->valid = block->valid;
 
 	// insert these two new blocks at the head of the free list
 	if(!this->insertBlockIntoFreeList(block)) {
-			throw std::runtime_error("couldn't insert block into freelist");
+			throw std::runtime_error("couldn't insert first split block into freelist");
 	}
 
 	if(!this->insertBlockIntoFreeList(secondBlock)) {
-			throw std::runtime_error("couldn't insert block into freelist");
+			throw std::runtime_error("couldn't insert second split block into freelist");
 	}
 
 	// std::cout << "\tnext block: " << std::hex << block->nextFree << "; second block next is " << secondBlock->nextFree << std::endl;
@@ -477,10 +489,20 @@ int BuddyAllocator::free(void *block) {
 	std::cout << "\tbuddy for " << std::hex << header << " is " << buddy
 		<< std::dec << std::endl;
 
-	if(buddy->allocated == 0) {
-		std::cout << "\tits buddy is unallocated, merging" << std::endl;
+	if(buddy->allocated == 0 && false) {
+		if(buddy->valid) {
+			std::cout << "\tits buddy is unallocated, merging" << std::endl;
 
-		this->merge(header, buddy);
+			this->merge(header, buddy);
+		} else {
+			std::cout << "\tits buddy is allocated but not valid (wtf);"
+			 	<< "inserting into freelist as is" << std::endl;
+
+			// put the block back in its free list
+			if(this->insertBlockIntoFreeList(header) == false) {
+				throw std::runtime_error("couldn't insert block into freelist");
+			}
+		}
 	} else {
 		std::cout << "\tits buddy is allocated, inserting into freelist as is"
 			<< std::endl;

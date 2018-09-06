@@ -47,6 +47,7 @@ class BuddyAllocator {
 
 	private:
 		/// checks whether the free list contains the given block
+		unsigned freeListContainsBlock(BlockHeader *block, size_t freeListIndex);
 		bool freeListContainsBlock(BlockHeader *block);
 		/// inserts a block into the free list
 		bool insertBlockIntoFreeList(BlockHeader *block);
@@ -80,6 +81,9 @@ class BuddyAllocator {
 
 			return (sizePowerOf2 - basicPowerOf2);
 		}
+
+	private:
+		void debugFindBlockInFreeList(BlockHeader *block);
 
 
 	public:

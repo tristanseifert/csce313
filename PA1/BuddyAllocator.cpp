@@ -112,7 +112,7 @@ BlockHeader* BuddyAllocator::getbuddy(BlockHeader *block) {
 	// get the size
 	size_t blockSize = block->size;
 
-	size_t bit = __builtin_ctzll(blockSize) - 1;
+	size_t bit = __builtin_ctzll(blockSize);
 
 	// flip the bit, thank you sir
 	size_t addr = (size_t) block;
@@ -124,24 +124,28 @@ BlockHeader* BuddyAllocator::getbuddy(BlockHeader *block) {
 
 
 
-/**
- * Checks whether the block exists in the free list.
- */
-bool BuddyAllocator::freeListContainsBlock(BlockHeader *block) {
-	size_t freeListIndex = freeListIndexForSize(block->size);
 
+/**
+ * Checks whether the block exists in the free list for the given size.
+ */
+unsigned BuddyAllocator::freeListContainsBlock(BlockHeader *block, size_t freeListIndex) {
+	// this counts the number of occurrences
+	unsigned occurrences = 0;
+
+	// is the free list valid?
 	if(this->freeList[freeListIndex]) {
+		// check if it's the head of the list
 		BlockHeader *current = this->freeList[freeListIndex];
 
-		if(current == block) {
-			return true;
-		}
+		/*if(current == block) {
+			occurrences++;
+		}*/
 
 		// iterate through the list
 		while(current) {
 			// is this the block we're after?
 			if(current == block) {
-				return true;
+				occurrences++;
 			}
 
 			// go to the next one
@@ -150,13 +154,25 @@ bool BuddyAllocator::freeListContainsBlock(BlockHeader *block) {
 	}
 
 	// if we get down here, we couldn't find it
-	return false;
+	return occurrences;
+}
+
+/**
+ * Checks whether the block exists in the free list.
+ */
+bool BuddyAllocator::freeListContainsBlock(BlockHeader *block) {
+	size_t freeListIndex = freeListIndexForSize(block->size);
+
+	return (this->freeListContainsBlock(block, freeListIndex) > 0);
 }
 
 /**
  * Inserts this block into its free list.
  */
 bool BuddyAllocator::insertBlockIntoFreeList(BlockHeader *block) {
+	// find where this block is in the freelist
+	this->debugFindBlockInFreeList(block);
+
 	// return if it's already in the free list
 	if(this->freeListContainsBlock(block)) {
 		throw std::runtime_error("attempting to insert block that's already in freelist");
@@ -199,6 +215,9 @@ bool BuddyAllocator::insertBlockIntoFreeList(BlockHeader *block) {
  * Removes a block from a free list.
  */
 bool BuddyAllocator::removeBlockFromFreeList(BlockHeader *block) {
+	// find where this block is in the freelist
+	this->debugFindBlockInFreeList(block);
+
 	// make sure this block is in the free list
 	if(!this->freeListContainsBlock(block)) {
 		throw std::runtime_error("attempting to remove block that's not in freelist");
@@ -297,6 +316,7 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 
 	// update the first block's header
 	block->size /= 2;
+	block->allocated = 0;
 
 	// create a new header halfway through
 	char *secondBlockPtr = reinterpret_cast<char *>(block);
@@ -305,7 +325,9 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 	BlockHeader *secondBlock = reinterpret_cast<BlockHeader *>(secondBlockPtr);
 	memset(secondBlock, 0, sizeof(BlockHeader));
 
+	// copy the properties from the other header
 	secondBlock->size = block->size;
+	secondBlock->allocated = block->allocated;
 
 	// insert these two new blocks at the head of the free list
 	if(!this->insertBlockIntoFreeList(block)) {
@@ -394,6 +416,11 @@ void *BuddyAllocator::alloc(size_t length) {
 				}
 			}
 
+			// remove it from the freelist
+			if(this->removeBlockFromFreeList(split) == false) {
+				throw std::runtime_error("couldn't remove block from freelist");
+			}
+
 			// we are now done
 			split->allocated = 1;
 
@@ -436,7 +463,7 @@ int BuddyAllocator::free(void *block) {
 	BlockHeader *header = reinterpret_cast<BlockHeader *>(headerPtr);
 
 	std::cout << "deallocating block " << std::hex << block << std::dec
-		<< std::endl;
+		<< " of size " << header->size << std::endl;
 
 	// subtract this block's size from the amount of memory we've allocated
 	this->allocationsSatisfied -= header->size;
@@ -447,12 +474,15 @@ int BuddyAllocator::free(void *block) {
 	// is this block's buddy free?
 	BlockHeader *buddy = this->getbuddy(header);
 
+	std::cout << "\tbuddy for " << std::hex << header << " is " << buddy
+		<< std::dec << std::endl;
+
 	if(buddy->allocated == 0) {
 		std::cout << "\tits buddy is unallocated, merging" << std::endl;
 
 		this->merge(header, buddy);
 	} else {
-		std::cout << "\tits budy is allocated, inserting into freelist as is"
+		std::cout << "\tits buddy is allocated, inserting into freelist as is"
 			<< std::endl;
 
 		// put the block back in its free list
@@ -466,6 +496,29 @@ int BuddyAllocator::free(void *block) {
 
 
 
+/**
+ * A debugging check that determines whether the free list is valid.
+ */
+void BuddyAllocator::debugFindBlockInFreeList(BlockHeader *block) {
+	std::cout << "Searching freelist for block " << std::hex << block << std::dec
+		<< ": ";
+
+	for(size_t i = 0; i < this->freeListLength; i++) {
+		// find how many times the block occurred in this free list
+		unsigned occurrences = this->freeListContainsBlock(block, i);
+
+		if(occurrences > 0) {
+			std::cout << i << "(" << occurrences << ") ";
+		}
+	}
+
+	// end the line
+	std::cout << std::endl;
+}
+
+/**
+ * Prints out allocation statistics.
+ */
 void BuddyAllocator::debug() {
 	size_t blockSize = this->basicBlockSz;
 
@@ -490,4 +543,10 @@ void BuddyAllocator::debug() {
 		// block size is multiplied by two
 		blockSize *= 2;
 	}
+
+	// print how much memory was allocated
+	float pctAlloc = (((float) this->allocationsSatisfied) / ((float) this->totalMemSz)) * 100.f;
+	std::cout << "Total memory allocated: " << this->allocationsSatisfied
+		<< " of " << this->totalMemSz << " bytes (" << pctAlloc
+		<< "%)" << std::endl;
 }

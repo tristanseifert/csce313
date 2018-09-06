@@ -125,6 +125,33 @@ BlockHeader* BuddyAllocator::getbuddy(BlockHeader *block) {
 	return reinterpret_cast<BlockHeader *>(addr);
 }
 
+/**
+ * Checks whether the given block is valid.
+ */
+bool BuddyAllocator::isvalid(BlockHeader *addr) {
+	// TODO: check address bounds
+
+	// return the state of the "valid" flag
+	return (addr->valid == 1);
+}
+
+/**
+ * Checks whether two blocks are buddies.
+ */
+bool BuddyAllocator::arebuddies(BlockHeader *block1, BlockHeader *block2) {
+	// ensure block2 comes after block1
+	if(block1 > block2) {
+		BlockHeader *first = block2;
+		BlockHeader *second = block1;
+
+		block1 = first;
+		block2 = second;
+	}
+
+	// block2 should be block1's buddy
+	return (block2 == this->getbuddy(block1));
+}
+
 
 
 
@@ -293,6 +320,8 @@ BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
 	block1->size *= 2;
 	block1->valid = 1;
 
+	std::cout << "!!! next block is " << std::hex << block1->nextFree << std::dec << std::endl;
+
 	// clear the contents of the block
 	size_t clearSz = block1->size - sizeof(BlockHeader);
 
@@ -318,6 +347,7 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 
 	std::cout << "\tsplitting block " << std::hex << block << " at free list idx "
 		<< std::dec << freeListIndex << std::endl;
+	std::cout << "\tits size is " << block->size << std::endl;
 
 	// remove this block from the free list
 	if(this->removeBlockFromFreeList(block) == false) {
@@ -362,6 +392,8 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
  * Allocates a block.
  */
 void *BuddyAllocator::alloc(size_t length) {
+	this->debugCheckBlockHeaders();
+
 	// we need a block that's the requested size, plus the header
 	size_t realLength = length + sizeof(BlockHeader);
 	realLength = RoundUpPowerOf2(realLength);
@@ -468,6 +500,8 @@ void *BuddyAllocator::alloc(size_t length) {
  * Deallocates a block.
  */
 int BuddyAllocator::free(void *block) {
+	this->debugCheckBlockHeaders();
+
 	// get the block header
 	char *headerPtr = static_cast<char *>(block);
 	headerPtr -= sizeof(BlockHeader);
@@ -483,34 +517,30 @@ int BuddyAllocator::free(void *block) {
 	// clear the allocated flag
 	header->allocated = 0;
 
+	// put the block back in its free list
+	if(this->insertBlockIntoFreeList(header) == false) {
+		throw std::runtime_error("couldn't insert block into freelist");
+	}
+
 	// is this block's buddy free?
 	BlockHeader *buddy = this->getbuddy(header);
 
-	std::cout << "\tbuddy for " << std::hex << header << " is " << buddy
-		<< std::dec << std::endl;
+	// std::cout << "\tbuddy for " << std::hex << header << " is " << buddy
+		// << std::dec << std::endl;
 
 	if(buddy->allocated == 0 && false) {
+		// is its buddy valid?
 		if(buddy->valid) {
-			std::cout << "\tits buddy is unallocated, merging" << std::endl;
+			std::cout << "\tits buddy is unallocated and valid, merging" << std::endl;
 
 			this->merge(header, buddy);
 		} else {
 			std::cout << "\tits buddy is allocated but not valid (wtf);"
 			 	<< "inserting into freelist as is" << std::endl;
-
-			// put the block back in its free list
-			if(this->insertBlockIntoFreeList(header) == false) {
-				throw std::runtime_error("couldn't insert block into freelist");
-			}
 		}
 	} else {
 		std::cout << "\tits buddy is allocated, inserting into freelist as is"
 			<< std::endl;
-
-		// put the block back in its free list
-		if(this->insertBlockIntoFreeList(header) == false) {
-			throw std::runtime_error("couldn't insert block into freelist");
-		}
 	}
 
   return 0;
@@ -571,4 +601,34 @@ void BuddyAllocator::debug() {
 	std::cout << "Total memory allocated: " << this->allocationsSatisfied
 		<< " of " << this->totalMemSz << " bytes (" << pctAlloc
 		<< "%)" << std::endl;
+}
+
+/**
+ * Iterates through the entire freelist and checks whether any blocks have had
+ * their headers corrupted.
+ */
+void BuddyAllocator::debugCheckBlockHeaders(void) {
+	size_t size = this->basicBlockSz;
+
+	for(size_t i = 0; i < this->freeListLength; i++) {
+		BlockHeader *current = this->freeList[i];
+
+		while(current) {
+			// is the size what we expect?
+			if(current->size != size) {
+				std::cout << "🚨 Block " << std::hex << current << std::dec << " is "
+					<< "corrupted; expected size " << size << ", got "
+					<< current->size << std::endl;
+
+				// try to fix it… this will probably blow up later though
+				current->size = size;
+			}
+
+			// go to the next block
+			current = current->nextFree;
+		}
+
+		// multiply size by 2
+		size *= 2;
+	}
 }

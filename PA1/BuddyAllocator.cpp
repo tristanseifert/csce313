@@ -15,8 +15,37 @@
 #include <iostream>
 #include <iomanip>
 
+
 /**
- * Rounds a number up to the nearest power of two.
+ * Debugging flags: use these to toggle various parts of debugging logic and
+ * logging in the allocator.
+ *
+ * - DEBUG: Set to 1 to enable all other kinds of debugging output.
+ *
+ * - DBG_INIT: Print some debugging info during initialization.
+ * - DBG_FREELIST: Print debugging info when manipulating the free list.
+ * - DBG_MERGE: Print debugging info when merging blocks.
+ * - DBG_SPLIT: Print debugging info when splitting blocks.
+ * - DBG_ALLOC: Prints debugging info when allocating blocks.
+ * - DBG_FREE: Prints debugging info when freeing blocks.
+ */
+#define DEBUG								1
+
+#if DEBUG
+
+	#define DBG_INIT					1
+	#define DBG_FREELIST			1
+	#define DBG_MERGE					1
+	#define DBG_SPLIT					1
+	#define DBG_ALLOC					1
+	#define DBG_FREE					1
+#endif
+
+
+
+/**
+ * Rounds a number up to the nearest power of two with some bit-twiddling
+ * fuckery
  */
 static size_t RoundUpPowerOf2(size_t in) {
 	unsigned int v = in;
@@ -41,8 +70,10 @@ BuddyAllocator::BuddyAllocator(size_t _basicBlockSize, size_t _totalSize) :
 	// round the total allocation size to a power of two
 	this->totalMemSz = RoundUpPowerOf2(this->totalMemSz);
 
+#if DBG_INIT
 	std::cout << "Basic block size:\t" << this->basicBlockSz << std::endl;
 	std::cout << "Total memory size:\t" << this->totalMemSz << std::endl;
+#endif
 
 	// allocate the internal buffer and zero it
 	this->mem = malloc(this->totalMemSz);
@@ -59,7 +90,9 @@ BuddyAllocator::BuddyAllocator(size_t _basicBlockSize, size_t _totalSize) :
 
 	int freeListEntries = (totalPowerOf2 - basicPowerOf2) + 1;
 
+#if DBG_INIT
 	std::cout << "Free list has " << freeListEntries << " entries" << std::endl;
+#endif
 
 	size_t freeListSize = sizeof(BlockHeader *) * freeListEntries;
 
@@ -85,8 +118,10 @@ BuddyAllocator::BuddyAllocator(size_t _basicBlockSize, size_t _totalSize) :
 		throw std::runtime_error("couldn't insert initial block into free list");
 	}
 
-	// print debug shit
+#if DBG_INIT
+	// print debug info about the free list
 	this->debug();
+#endif
 }
 
 /**
@@ -118,7 +153,7 @@ BlockHeader* BuddyAllocator::getbuddy(BlockHeader *block) {
 	size_t bit = __builtin_ctzll(blockSize);
 
 	// flip the bit, thank you sir
-	size_t addr = (size_t) block;
+	size_t addr = reinterpret_cast<size_t>(block);
 
 	addr ^= (1 << (bit));
 
@@ -166,10 +201,6 @@ unsigned BuddyAllocator::freeListContainsBlock(BlockHeader *block, size_t freeLi
 	if(this->freeList[freeListIndex]) {
 		// check if it's the head of the list
 		BlockHeader *current = this->freeList[freeListIndex];
-
-		/*if(current == block) {
-			occurrences++;
-		}*/
 
 		// iterate through the list
 		while(current) {
@@ -261,7 +292,9 @@ bool BuddyAllocator::removeBlockFromFreeList(BlockHeader *block) {
 		if(this->freeList[freeListIndex] == block) {
 			this->freeList[freeListIndex] = block->nextFree;
 
+#if DBG_FREELIST
 			std::cout << "\t\tremoved block from free list index " << freeListIndex << std::endl;
+#endif
 			return true;
 		} else {
 			// iterate through til we find this block
@@ -273,7 +306,9 @@ bool BuddyAllocator::removeBlockFromFreeList(BlockHeader *block) {
 					// if so, change it
 					current->nextFree = block->nextFree;
 
+#if DBG_FREELIST
 					std::cout << "\t\tremoved block from free list index " << freeListIndex << std::endl;
+#endif
 					return true;
 				}
 
@@ -320,7 +355,9 @@ BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
 	block1->size *= 2;
 	block1->valid = 1;
 
+#if DBG_MERGE
 	std::cout << "!!! next block is " << std::hex << block1->nextFree << std::dec << std::endl;
+#endif
 
 	// clear the contents of the block
 	size_t clearSz = block1->size - sizeof(BlockHeader);
@@ -345,9 +382,11 @@ BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
 BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 	size_t freeListIndex = freeListIndexForSize(block->size);
 
+#if DBG_SPLIT
 	std::cout << "\tsplitting block " << std::hex << block << " at free list idx "
 		<< std::dec << freeListIndex << std::endl;
 	std::cout << "\tits size is " << block->size << std::endl;
+#endif
 
 	// remove this block from the free list
 	if(this->removeBlockFromFreeList(block) == false) {
@@ -380,7 +419,9 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 			throw std::runtime_error("couldn't insert second split block into freelist");
 	}
 
+#if DBG_SPLIT
 	// std::cout << "\tnext block: " << std::hex << block->nextFree << "; second block next is " << secondBlock->nextFree << std::endl;
+#endif
 
 	// return the original block
 	return block;
@@ -403,23 +444,29 @@ void *BuddyAllocator::alloc(size_t length) {
 		realLength = this->basicBlockSz;
 	}
 
+#if DBG_ALLOC
 	std::cout << std::dec;
 	std::cout << "requested allocation for " << length << ", finding block size "
 		<< realLength << " to satisfy it" << std::endl;
+#endif
 
 	// is there something in the free list?
 	size_t freeListIndex = this->freeListIndexForSize(realLength);
 
+#if DBG_ALLOC
 	std::cout << "\tfree list index " << freeListIndex << std::endl;
+#endif
 
 	if(this->freeList[freeListIndex]) {
 		// that was easy, lmfao
 		BlockHeader *header = this->freeList[freeListIndex];
 
+#if DBG_ALLOC
 		std::cout << "\t✅ satisfied via free list, block is " << std::hex << header
 			<< std::dec << std::endl;
 		std::cout << "\tupdating free list: next free block is " << std::hex
 			<< header->nextFree << std::dec << std::endl;
+#endif
 
 		// remove it from the freelist
 		if(this->removeBlockFromFreeList(header) == false) {
@@ -429,10 +476,12 @@ void *BuddyAllocator::alloc(size_t length) {
 		// mark the block as allocated
 		header->allocated = 1;
 
+#if DBG_ALLOC
 		this->debug();
 
 		std::cout << "\treturning block sized " << header->size << " at address "
 			<< std::hex << header << std::dec << std::endl;
+#endif
 
 		// accounting
 		this->allocationsSatisfied += header->size;
@@ -468,6 +517,7 @@ void *BuddyAllocator::alloc(size_t length) {
 			// we are now done
 			split->allocated = 1;
 
+#if DBG_ALLOC
 			std::cout << "\t✅ satisfied by splitting, block is " << std::hex << split
 				<< std::dec << std::endl;
 
@@ -475,6 +525,7 @@ void *BuddyAllocator::alloc(size_t length) {
 
 			std::cout << "\treturning block sized " << split->size << " at address "
 				<< std::hex << split << std::dec << std::endl;
+#endif
 
 			// accounting
 			this->allocationsSatisfied += split->size;
@@ -508,8 +559,10 @@ int BuddyAllocator::free(void *block) {
 
 	BlockHeader *header = reinterpret_cast<BlockHeader *>(headerPtr);
 
+#if DBG_FREE
 	std::cout << "deallocating block " << std::hex << block << std::dec
 		<< " of size " << header->size << std::endl;
+#endif
 
 	// subtract this block's size from the amount of memory we've allocated
 	this->allocationsSatisfied -= header->size;
@@ -531,16 +584,22 @@ int BuddyAllocator::free(void *block) {
 	if(buddy->allocated == 0 && false) {
 		// is its buddy valid?
 		if(buddy->valid) {
+#if DBG_FREE
 			std::cout << "\tits buddy is unallocated and valid, merging" << std::endl;
+#endif
 
 			this->merge(header, buddy);
 		} else {
+#if DBG_FREE
 			std::cout << "\tits buddy is allocated but not valid (wtf);"
 			 	<< "inserting into freelist as is" << std::endl;
+#endif
 		}
 	} else {
+#if DBG_FREE
 		std::cout << "\tits buddy is allocated, inserting into freelist as is"
 			<< std::endl;
+#endif
 	}
 
   return 0;

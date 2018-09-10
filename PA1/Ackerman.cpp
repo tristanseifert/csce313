@@ -88,7 +88,7 @@ int Ackerman::Recurse(int a, int b) {
   char* mem = (char *) ba->alloc(to_alloc);  // request memory
   num_allocations++;
 
-  cout << "allocated " << to_alloc << " bytes " << endl;
+  // cout << "allocated " << to_alloc << " bytes " << endl;
 
   if (mem != NULL) {
 

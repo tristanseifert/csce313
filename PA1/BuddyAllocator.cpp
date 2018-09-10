@@ -28,18 +28,28 @@
  * - DBG_SPLIT: Print debugging info when splitting blocks.
  * - DBG_ALLOC: Prints debugging info when allocating blocks.
  * - DBG_FREE: Prints debugging info when freeing blocks.
+ *
+ * Additionally, there are some sanity checks that can be enabled regardless of
+ * the debug state:
+ * - SANITY_CHECK_SIZES: Checks the sizes in each free list between allocations.
+ * - SANITY_CLEAR_MEM: Clears memory between allocations.
  */
-#define DEBUG								1
+#define DEBUG							0
 
 #if DEBUG
 
 	#define DBG_INIT					1
-	#define DBG_FREELIST			1
+	#define DBG_FREELIST			    1
 	#define DBG_MERGE					1
 	#define DBG_SPLIT					1
 	#define DBG_ALLOC					1
 	#define DBG_FREE					1
 #endif
+
+#define SANITY_CHECK_SIZES				0
+#define SANITY_CLEAR_MEM				1
+
+
 
 
 
@@ -360,12 +370,14 @@ BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
 #endif
 
 	// clear the contents of the block
+#if SANITY_CLEAR_MEM
 	size_t clearSz = block1->size - sizeof(BlockHeader);
 
 	char *dataStart = reinterpret_cast<char *>(block1);
 	dataStart += sizeof(BlockHeader);
 
 	memset(dataStart, 0, clearSz);
+#endif
 
 	// insert block1 into the freelist of the next level
 	if(this->insertBlockIntoFreeList(block1) == false) {
@@ -433,7 +445,9 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
  * Allocates a block.
  */
 void *BuddyAllocator::alloc(size_t length) {
+#if SANITY_CHECK_SIZES
 	this->debugCheckBlockHeaders();
+#endif
 
 	// we need a block that's the requested size, plus the header
 	size_t realLength = length + sizeof(BlockHeader);
@@ -551,7 +565,9 @@ void *BuddyAllocator::alloc(size_t length) {
  * Deallocates a block.
  */
 int BuddyAllocator::free(void *block) {
+#if SANITY_CHECK_SIZES
 	this->debugCheckBlockHeaders();
+#endif
 
 	// get the block header
 	char *headerPtr = static_cast<char *>(block);

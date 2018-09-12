@@ -16,3 +16,4 @@ memtest: Main.o Ackerman.o BuddyAllocator.o
 
 clean:
 	rm *.o
+	rm memtest

@@ -33,6 +33,7 @@
  * the debug state:
  * - SANITY_CHECK_SIZES: Checks the sizes in each free list between allocations.
  * - SANITY_CLEAR_MEM: Clears memory between allocations.
+ * - SANITY_CHECK_FREELIST: Validate preconditions for insert/remove on freelist
  */
 #define DEBUG							0
 
@@ -48,6 +49,7 @@
 
 #define SANITY_CHECK_SIZES				0
 #define SANITY_CLEAR_MEM				1
+#define SANITY_CHECK_FREELIST		1
 
 
 
@@ -99,24 +101,22 @@ BuddyAllocator::BuddyAllocator(size_t _basicBlockSize, size_t _totalSize) :
 	int totalPowerOf2 = __builtin_ctzll(this->totalMemSz);
 
 	int freeListEntries = (totalPowerOf2 - basicPowerOf2) + 1;
+	this->freeListLength = freeListEntries;
 
 #if DBG_INIT
 	std::cout << "Free list has " << freeListEntries << " entries" << std::endl;
 #endif
 
-	size_t freeListSize = sizeof(BlockHeader *) * freeListEntries;
-
-	this->freeList = reinterpret_cast<BlockHeader **>(malloc(freeListSize));
-	this->freeListLength = freeListEntries;
-
-	if(!this->freeList) {
-		throw std::runtime_error("couldn't allocate free list");
+	for(size_t i = 0; i < freeListEntries; i++) {
+		this->freeList[i] = nullptr;
 	}
-
-	memset(this->freeList, 0, freeListSize);
 
 	// create the initial block
 	BlockHeader *initial = reinterpret_cast<BlockHeader *>(this->mem);
+
+	if(!initial) {
+		throw std::runtime_error("couldn't cast block header… wtf");
+	}
 
 	initial->valid = 1;
 	initial->allocated = 0;
@@ -141,11 +141,6 @@ BuddyAllocator::~BuddyAllocator() {
 	// release memory area
 	if(this->mem) {
 		::free(this->mem);
-	}
-
-	// release freelist
-	if(this->freeList) {
-		::free(this->freeList);
 	}
 }
 
@@ -232,7 +227,7 @@ unsigned BuddyAllocator::freeListContainsBlock(BlockHeader *block, size_t freeLi
  * Checks whether the block exists in the free list.
  */
 bool BuddyAllocator::freeListContainsBlock(BlockHeader *block) {
-	size_t freeListIndex = freeListIndexForSize(block->size);
+	size_t freeListIndex = this->freeListIndexForSize(block->size);
 
 	return (this->freeListContainsBlock(block, freeListIndex) > 0);
 }
@@ -240,27 +235,29 @@ bool BuddyAllocator::freeListContainsBlock(BlockHeader *block) {
 /**
  * Inserts this block into its free list.
  */
-bool BuddyAllocator::insertBlockIntoFreeList(BlockHeader *block) {
+bool LinkedList::insert(BuddyAllocator *allocator, BlockHeader *block) {
 	// find where this block is in the freelist
 	// this->debugFindBlockInFreeList(block);
 
+#if SANITY_CHECK_FREELIST
 	// return if it's already in the free list
-	if(this->freeListContainsBlock(block)) {
+	if(allocator->freeListContainsBlock(block)) {
 		throw std::runtime_error("attempting to insert block that's already in freelist");
 	}
+#endif
 
 	// get index into the free list
-	size_t freeListIndex = freeListIndexForSize(block->size);
+	size_t freeListIndex = allocator->freeListIndexForSize(block->size);
 
 	// if the freelist is empty, insert it at the head
-	if(this->freeList[freeListIndex] == nullptr) {
-		this->freeList[freeListIndex] = block;
+	if(allocator->freeList[freeListIndex] == nullptr) {
+		allocator->freeList[freeListIndex] = block;
 		block->nextFree = nullptr;
 
 		return true;
 	} else {
 		// traverse the free list til the end
-		BlockHeader *current = this->freeList[freeListIndex];
+		BlockHeader *current = allocator->freeList[freeListIndex];
 
 		while(current) {
 			// is the next entry null?
@@ -285,22 +282,24 @@ bool BuddyAllocator::insertBlockIntoFreeList(BlockHeader *block) {
 /**
  * Removes a block from a free list.
  */
-bool BuddyAllocator::removeBlockFromFreeList(BlockHeader *block) {
+bool LinkedList::remove(BuddyAllocator *allocator, BlockHeader *block) {
 	// find where this block is in the freelist
 	// this->debugFindBlockInFreeList(block);
 
+#if SANITY_CHECK_FREELIST
 	// make sure this block is in the free list
-	if(!this->freeListContainsBlock(block)) {
+	if(!allocator->freeListContainsBlock(block)) {
 		throw std::runtime_error("attempting to remove block that's not in freelist");
 	}
+#endif
 
 	// check the free list
-	size_t freeListIndex = freeListIndexForSize(block->size);
+	size_t freeListIndex = allocator->freeListIndexForSize(block->size);
 
-	if(this->freeList[freeListIndex]) {
+	if(allocator->freeList[freeListIndex]) {
 		// handle the case where it's the first element
-		if(this->freeList[freeListIndex] == block) {
-			this->freeList[freeListIndex] = block->nextFree;
+		if(allocator->freeList[freeListIndex] == block) {
+			allocator->freeList[freeListIndex] = block->nextFree;
 
 #if DBG_FREELIST
 			std::cout << "\t\tremoved block from free list index " << freeListIndex << std::endl;
@@ -308,7 +307,7 @@ bool BuddyAllocator::removeBlockFromFreeList(BlockHeader *block) {
 			return true;
 		} else {
 			// iterate through til we find this block
-			BlockHeader *current = this->freeList[freeListIndex];
+			BlockHeader *current = allocator->freeList[freeListIndex];
 
 			while(current) {
 				// is the next entry this block?
@@ -392,7 +391,7 @@ BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
  * Splits the specified block in half, then returns the first buddy.
  */
 BlockHeader* BuddyAllocator::split(BlockHeader* block) {
-	size_t freeListIndex = freeListIndexForSize(block->size);
+	size_t freeListIndex = this->freeListIndexForSize(block->size);
 
 #if DBG_SPLIT
 	std::cout << "\tsplitting block " << std::hex << block << " at free list idx "

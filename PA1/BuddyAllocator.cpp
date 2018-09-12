@@ -193,6 +193,11 @@ bool BuddyAllocator::arebuddies(BlockHeader *block1, BlockHeader *block2) {
 		block2 = second;
 	}
 
+	// are they the same size?
+	if(block2->size != block1->size) {
+		return false;
+	}
+
 	// block2 should be block1's buddy
 	return (block2 == this->getbuddy(block1));
 }

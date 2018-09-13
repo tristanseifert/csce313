@@ -74,8 +74,8 @@ class BuddyAllocator {
 		size_t allocationsSatisfied = 0;
 
 		// free list for each size
-		BlockHeader *freeList[BuddyAllocator::FREE_LIST_MAX];
-		size_t freeListLength = 0;
+		BlockHeader *freeLists[BuddyAllocator::FREE_LIST_MAX];
+		size_t freeListsLength = 0;
 
 		// allocated memory area
 		void *mem = nullptr;
@@ -117,7 +117,7 @@ class BuddyAllocator {
 			size_t index = (sizePowerOf2 - basicPowerOf2);
 
 			// make sure its in bounds
-			if(index > this->freeListLength) {
+			if(index > this->freeListsLength) {
 				throw std::runtime_error("couldn't convert size to valid free list idx");
 			}
 

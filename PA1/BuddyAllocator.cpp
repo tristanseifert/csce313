@@ -101,14 +101,14 @@ BuddyAllocator::BuddyAllocator(size_t _basicBlockSize, size_t _totalSize) :
 	int totalPowerOf2 = __builtin_ctzll(this->totalMemSz);
 
 	int freeListEntries = (totalPowerOf2 - basicPowerOf2) + 1;
-	this->freeListLength = freeListEntries;
+	this->freeListsLength = freeListEntries;
 
 #if DBG_INIT
 	std::cout << "Free list has " << freeListEntries << " entries" << std::endl;
 #endif
 
 	for(size_t i = 0; i < freeListEntries; i++) {
-		this->freeList[i] = nullptr;
+		this->freeLists[i] = nullptr;
 	}
 
 	// create the initial block
@@ -208,9 +208,9 @@ unsigned BuddyAllocator::freeListContainsBlock(BlockHeader *block, size_t freeLi
 	unsigned occurrences = 0;
 
 	// is the free list valid?
-	if(this->freeList[freeListIndex]) {
+	if(this->freeLists[freeListIndex]) {
 		// check if it's the head of the list
-		BlockHeader *current = this->freeList[freeListIndex];
+		BlockHeader *current = this->freeLists[freeListIndex];
 
 		// iterate through the list
 		while(current) {
@@ -255,14 +255,14 @@ bool LinkedList::insert(BuddyAllocator *allocator, BlockHeader *block) {
 	size_t freeListIndex = allocator->freeListIndexForSize(block->size);
 
 	// if the freelist is empty, insert it at the head
-	if(allocator->freeList[freeListIndex] == nullptr) {
-		allocator->freeList[freeListIndex] = block;
+	if(allocator->freeLists[freeListIndex] == nullptr) {
+		allocator->freeLists[freeListIndex] = block;
 		block->nextFree = nullptr;
 
 		return true;
 	} else {
 		// traverse the free list til the end
-		BlockHeader *current = allocator->freeList[freeListIndex];
+		BlockHeader *current = allocator->freeLists[freeListIndex];
 
 		while(current) {
 			// is the next entry null?
@@ -301,10 +301,10 @@ bool LinkedList::remove(BuddyAllocator *allocator, BlockHeader *block) {
 	// check the free list
 	size_t freeListIndex = allocator->freeListIndexForSize(block->size);
 
-	if(allocator->freeList[freeListIndex]) {
+	if(allocator->freeLists[freeListIndex]) {
 		// handle the case where it's the first element
-		if(allocator->freeList[freeListIndex] == block) {
-			allocator->freeList[freeListIndex] = block->nextFree;
+		if(allocator->freeLists[freeListIndex] == block) {
+			allocator->freeLists[freeListIndex] = block->nextFree;
 
 #if DBG_FREELIST
 			std::cout << "\t\tremoved block from free list index " << freeListIndex << std::endl;
@@ -312,7 +312,7 @@ bool LinkedList::remove(BuddyAllocator *allocator, BlockHeader *block) {
 			return true;
 		} else {
 			// iterate through til we find this block
-			BlockHeader *current = allocator->freeList[freeListIndex];
+			BlockHeader *current = allocator->freeLists[freeListIndex];
 
 			while(current) {
 				// is the next entry this block?
@@ -475,9 +475,9 @@ void *BuddyAllocator::alloc(size_t length) {
 	std::cout << "\tfree list index " << freeListIndex << std::endl;
 #endif
 
-	if(this->freeList[freeListIndex]) {
+	if(this->freeLists[freeListIndex]) {
 		// that was easy, lmfao
-		BlockHeader *header = this->freeList[freeListIndex];
+		BlockHeader *header = this->freeLists[freeListIndex];
 
 #if DBG_ALLOC
 		std::cout << "\t✅ satisfied via free list, block is " << std::hex << header
@@ -512,11 +512,11 @@ void *BuddyAllocator::alloc(size_t length) {
 	}
 
 	// couldn't find an entry in the free list, so start breaking larger blocks
-	for(size_t i = freeListIndex; i < this->freeListLength; i++) {
+	for(size_t i = freeListIndex; i < this->freeListsLength; i++) {
 		// is there a block of this size free?
-		if(this->freeList[i]) {
+		if(this->freeLists[i]) {
 			// break it down into a smaller block
-			BlockHeader *split = this->split(this->freeList[i]);
+			BlockHeader *split = this->split(this->freeLists[i]);
 
 			// if this block is more than one block larger, split it further
 			if((i - 1) > freeListIndex) {
@@ -634,7 +634,7 @@ void BuddyAllocator::debugFindBlockInFreeList(BlockHeader *block) {
 	std::cout << "Searching freelist for block " << std::hex << block << std::dec
 		<< ": ";
 
-	for(size_t i = 0; i < this->freeListLength; i++) {
+	for(size_t i = 0; i < this->freeListsLength; i++) {
 		// find how many times the block occurred in this free list
 		unsigned occurrences = this->freeListContainsBlock(block, i);
 
@@ -657,12 +657,12 @@ void BuddyAllocator::debug() {
 	std::cout << std::setw(8) << "Block Size\tFree Blocks" << std::endl;
 
 	// for each content of the free list, print the number of available free blocks
-	for(size_t i = 0; i < this->freeListLength; i++) {
+	for(size_t i = 0; i < this->freeListsLength; i++) {
 		std::cout << std::setw(8) << blockSize << "\t";
 
 		// count the number of free blocks
 		int blocks = 0;
-		BlockHeader *header = this->freeList[i];
+		BlockHeader *header = this->freeLists[i];
 
 		while(header != nullptr) {
 			blocks++;
@@ -689,8 +689,8 @@ void BuddyAllocator::debug() {
 void BuddyAllocator::debugCheckBlockHeaders(void) {
 	size_t size = this->basicBlockSz;
 
-	for(size_t i = 0; i < this->freeListLength; i++) {
-		BlockHeader *current = this->freeList[i];
+	for(size_t i = 0; i < this->freeListsLength; i++) {
+		BlockHeader *current = this->freeLists[i];
 
 		while(current) {
 			// is the size what we expect?

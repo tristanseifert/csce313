@@ -15,6 +15,8 @@
 #include <iostream>
 #include <iomanip>
 
+#define USE_OPTIMIZED			0
+
 
 /**
  * Debugging flags: use these to toggle various parts of debugging logic and
@@ -47,9 +49,15 @@
 	#define DBG_FREE					1
 #endif
 
-#define SANITY_CHECK_SIZES				0
-#define SANITY_CLEAR_MEM				1
-#define SANITY_CHECK_FREELIST		1
+#if USE_OPTIMIZED
+	#define SANITY_CHECK_SIZES				0
+	#define SANITY_CLEAR_MEM				0
+	#define SANITY_CHECK_FREELIST		0
+#else
+	#define SANITY_CHECK_SIZES				0
+	#define SANITY_CLEAR_MEM				1
+	#define SANITY_CHECK_FREELIST		1
+#endif
 
 
 

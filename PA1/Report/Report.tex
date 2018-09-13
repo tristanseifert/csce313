@@ -1,0 +1,128 @@
+\documentclass[10pt]{article}
+\usepackage[margin=.7in]{geometry}
+\usepackage[T1]{fontenc}
+%\usepackage{amsmath,amssymb,amsthm}
+%\usepackage{enumerate}
+%\usepackage{minibox}
+%\usepackage[table]{xcolor}
+
+\usepackage{csvsimple}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{pgfplots}
+
+\pgfplotsset{width=12cm,compat=1.3}
+
+% \def\code#1{\texttt{#1}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\title{CSCE 313.506-F18: \\Programming Assignment 1}
+\author{Tristan Seifert}
+\date{Due: Friday, Sep. 14, 2018}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+\maketitle
+
+\hrule
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Overview}
+Compile the program using the provided \texttt{makefile}, which produces an executable called \texttt{memtest}: this program accepts the parameters \texttt{-b} to specify the smallest block size, and \texttt{-s} for specifying the overall memory size, in bytes.
+
+Internally, the buddy allocator uses the \texttt{BlockHeader} structs at the start of each block for housekeeping and metadata. These blocks contain the pointers used by the \texttt{LinkedList} class to traverse the free list, as well as allocated/free and validity flags, as well as the block's size.
+
+To test the optimizations, set the \texttt{USE\_OPTIMIZED} define to 1 at the top of \texttt{BuddyAllocator.cpp}.
+
+\section{Improvements}
+The initial implementation of the allocator was rather naive in how it handled memory: blocks are split at allocation time, and merged when they are freed, and performed a lot of sanity checks to prevent mis-use of the API it exposes. This approach works, but it makes freeing memory quite slow.
+
+An improvement that I applied to my allocator was to first remove those sanity checks -- testing whether a freelist operation was valid, finding corrupted blocks, etc. -- that ran for every call to \texttt{BuddyAllocator::alloc(size\_t)} and \texttt{BuddyAllocator::free(void *)}. This reduced the runtime for allocations by approximately 5-15\%, depending on how many memory allocation cycles took place.
+
+Additionally, deallocation performance can be improved significantly by deferring merging of blocks until absolutely necessary. I tested this by not merging blocks in \texttt{BuddyAllocator::free(void *)}: instead, they are simply returned to the freelist for later allocations, and are merged when there are no larger blocks to split available. While this can increase fragmentation considerably, for the essentially random allocation pattern used by the Ackermann function, this reduced the number of merges by almost 95\%, improving performance of deallocation by approximately 20\%.
+
+
+A possible optimization, if the sizes of allocations are known beforehand, a zone allocator can be a better option: blocks of a fixed size are pre-allocated, and a free list contains those blocks that haven't been allocated. This is similar to how the buddy allocator behaves, if there were only one size of block.
+
+\section{Performance Data}
+{
+\center\it
+{Data on Page 2}
+}
+
+\pagebreak
+
+\begin{table}[]
+\begin{tabular}{c|c|c|c|c}
+\textbf{n} & \textbf{m} & \textbf{cycles} & \textbf{Time (sec)} & \textbf{Time (with improvements, sec)} \\ \hline
+3 & 2 & 541 & 0.028 & 0.021 \\
+3 & 4 & 10307 & 0.579 & 0.43 \\
+3 & 6 & 172233 & 11.3 & 7.9 \\
+3 & 8 & 2785999 & 176.91 &  \\
+2 & 2 & 27 & 0.0061 & 0.0033 \\
+2 & 4 & 65 & 0.0065 & 0.0039 \\
+2 & 6 & 119 & 0.00502 & 0.0039 \\
+2 & 8 & 189 & 0.012 & 0.0084 \\
+1 & 2 & 6 & 0.000259 & 0.000259 \\
+1 & 4 & 10 & 0.002231 & 0.002231 \\
+1 & 6 & 14 & 0.000961 & 0.000961 \\
+1 & 8 & 18 & 0.000271 & 0.000271
+\end{tabular}
+\caption{Performance Data for the Buddy Allocator}
+\end{table}
+
+\begin{figure}
+\centering
+\begin{tikzpicture}
+\pgfplotsset{
+    scale only axis,
+}
+
+	\begin{axis}[
+  axis y line*=left,
+		xlabel={m ($n = 3$)},
+		ylabel=Time (seconds),
+		%ymode=log,
+		log basis y=10
+	]
+	\addplot[color=red,smooth,mark=o] coordinates {
+		(2,0.028)
+		(4,0.579)
+		(6,11.3)
+		(8,176.91)
+	};
+	\addplot[color=blue,smooth,mark=o] coordinates {
+		(2,0.021)
+		(4,0.43)
+		(6,5.9)
+		(8,116.22)
+	};
+	\end{axis}
+	
+	\begin{axis}[
+  axis y line*=right,
+  axis x line=none,
+  ylabel=Allocation Cycles,
+  ymin=500, ymax=3000000,
+  ymode=log,
+  log basis y = 10
+]
+	\addplot[color=gray,smooth,mark=*] coordinates {
+		(2,541)
+		(4,10307)
+		(6,172233)
+		(8,2785999)
+	};
+
+	\end{axis}
+	
+	\matrix [draw,below left] at (current bounding box.north west) {
+  \node [style={draw = red,shape=circle},label=right:Without Optimizations] {}; \\
+  \node [style={draw = blue,shape=circle},label=right:With Optimizations] {}; \\
+  \node [style={fill=gray},label=right:Allocation Cycles] {}; \\
+};
+\end{tikzpicture}
+\caption{Comparison of Performance}
+\end{figure}
+
+\end{document}

@@ -8,7 +8,7 @@ extern "C" char *optarg;
 extern "C" int optind;
 
 int main(int argc, char **argv) {
-  // TODO: read this from the command line with getopt()
+  // default values
   int basic_block_size = 128, memory_length = 512 * 1024;
 
   // parse command line parameters

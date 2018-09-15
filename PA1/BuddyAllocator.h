@@ -110,14 +110,14 @@ class BuddyAllocator {
 
 
 		/// given a block size, return the free list index
-		size_t freeListIndexForSize(size_t size) {
+		size_t freeListIndexForSize(size_t size, bool checkValidity = true) {
 			int basicPowerOf2 = __builtin_ctzll(this->basicBlockSz);
 			int sizePowerOf2 = __builtin_ctzll(size);
 
 			size_t index = (sizePowerOf2 - basicPowerOf2);
 
 			// make sure its in bounds
-			if(index > this->freeListsLength) {
+			if(checkValidity && index > this->freeListsLength) {
 				throw std::runtime_error("couldn't convert size to valid free list idx");
 			}
 

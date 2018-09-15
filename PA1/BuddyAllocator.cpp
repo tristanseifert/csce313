@@ -9,6 +9,7 @@
 #include "BuddyAllocator.h"
 
 #include <cstring>
+#include <cstdint>
 
 #include <stdexcept>
 
@@ -385,7 +386,7 @@ BlockHeader* BuddyAllocator::merge(BlockHeader* block1, BlockHeader* block2) {
 #if SANITY_CLEAR_MEM
 	size_t clearSz = block1->size - sizeof(BlockHeader);
 
-	char *dataStart = reinterpret_cast<char *>(block1);
+	uint8_t *dataStart = reinterpret_cast<uint8_t *>(block1);
 	dataStart += sizeof(BlockHeader);
 
 	memset(dataStart, 0, clearSz);
@@ -423,7 +424,7 @@ BlockHeader* BuddyAllocator::split(BlockHeader* block) {
 	block->valid = 1;
 
 	// create a new header halfway through
-	char *secondBlockPtr = reinterpret_cast<char *>(block);
+	uint8_t *secondBlockPtr = reinterpret_cast<uint8_t *>(block);
 	secondBlockPtr += block->size;
 
 	BlockHeader *secondBlock = reinterpret_cast<BlockHeader *>(secondBlockPtr);
@@ -477,7 +478,11 @@ void *BuddyAllocator::alloc(size_t length) {
 #endif
 
 	// is there something in the free list?
-	size_t freeListIndex = this->freeListIndexForSize(realLength);
+	size_t freeListIndex = this->freeListIndexForSize(realLength, false);
+
+	if(freeListIndex > this->freeListsLength) {
+		return nullptr;
+	}
 
 #if DBG_ALLOC
 	std::cout << "\tfree list index " << freeListIndex << std::endl;
@@ -513,7 +518,7 @@ void *BuddyAllocator::alloc(size_t length) {
 		this->allocationsSatisfied += header->size;
 
 		// return the data
-		char *dataPtr = reinterpret_cast<char *>(header);
+		uint8_t *dataPtr = reinterpret_cast<uint8_t *>(header);
 		dataPtr += sizeof(BlockHeader);
 
 		return dataPtr;
@@ -556,7 +561,7 @@ void *BuddyAllocator::alloc(size_t length) {
 			// accounting
 			this->allocationsSatisfied += split->size;
 
-			char *dataPtr = reinterpret_cast<char *>(split);
+			uint8_t *dataPtr = reinterpret_cast<uint8_t *>(split);
 			dataPtr += sizeof(BlockHeader);
 
 			return dataPtr;
@@ -582,7 +587,7 @@ int BuddyAllocator::free(void *block) {
 #endif
 
 	// get the block header
-	char *headerPtr = static_cast<char *>(block);
+	uint8_t *headerPtr = static_cast<uint8_t *>(block);
 	headerPtr -= sizeof(BlockHeader);
 
 	BlockHeader *header = reinterpret_cast<BlockHeader *>(headerPtr);

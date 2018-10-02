@@ -2,6 +2,10 @@
 
 #include <unistd.h>
 
+
+
+#include "prompt.h"
+
 /**
  * Prints the help string.
  */
@@ -42,4 +46,12 @@ int main(int argc, char *argv[]) {
         break;
     }
   }
+
+  // allocate the prompt to start the shell
+  Prompt *p = new Prompt(showPrompt);
+
+  p->start();
+
+  // done
+  delete p;
 }

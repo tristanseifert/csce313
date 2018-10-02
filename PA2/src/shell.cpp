@@ -9,7 +9,10 @@
 #include <string>
 #include <stdexcept>
 
+#include <sys/wait.h>
+#include <sys/types.h>
 #include <unistd.h>
+#include <signal.h>
 
 /**
  * Initializes the shell.
@@ -23,8 +26,37 @@ Shell::Shell() {
  * Terminates any remaining processes and cleans up the system state.
  */
 Shell::~Shell() {
+  // kill children
+  this->killBackgroundedChildren();
+
   // clean up resources
   delete this->parser;
+}
+
+
+
+/**
+ * Kills all backgrounded child processes.
+ */
+void Shell::killBackgroundedChildren(void) {
+  int err;
+
+  // exit if we don't have children
+  if(this->backgroundProcesses.empty()) return;
+
+  for(auto it = this->backgroundProcesses.begin(); it < this->backgroundProcesses.end(); it++) {
+    // kill the process
+    err = kill(it->pid, SIGKILL);
+
+    if(err != 0) {
+      std::cout << "\tCouldn't kill background process " << it->pid << ": "
+        << strerror(errno) << std::endl;
+    }
+  }
+
+  // print a message indicating how many background processes were killed
+  std::cout << "Killed " << this->backgroundProcesses.size()
+    << " background processes" << std::endl;
 }
 
 
@@ -34,10 +66,12 @@ Shell::~Shell() {
  * whether it needs to be executed with exec()
  */
 bool Shell::isFragmentBuiltin(Parser::Fragment &frag) {
-  // change directory (cd)
+  // change directory
   if(frag.command == "cd") return true;
   // exit shell
   if(frag.command == "exit") return true;
+  // show jobs
+  if(frag.command == "jobs") return true;
 
   // not a builtin
   return false;
@@ -73,7 +107,42 @@ int Shell::builtinCd(Parser::Fragment &frag) {
 int Shell::builtinExit(Parser::Fragment &frag) {
   std::cout << "Goodbye!" << std::endl;
 
+  // kill children
+  this->killBackgroundedChildren();
+
+  // exit
   exit(0);
+}
+
+/**
+ * Lists all background processes.
+ */
+int Shell::builtinJobs(Parser::Fragment &frag) {
+  int err;
+
+  // iterate over all background jobs
+  int i = 1;
+  for(auto it = this->backgroundProcesses.begin(); it < this->backgroundProcesses.end(); it++) {
+    std::cout << "[" << i++ << "]\t";
+
+    // print PID
+    std::cout << it->pid << "\t";
+
+    // is the process running?
+    errno = 0;
+    err = kill(it->pid, 0);
+
+    if(err == 0) {
+      std::cout << "running\t\t";
+    } else {
+      std::cout << "stopped\t\t";
+    }
+
+    // print the command line
+    std::cout << it->fragment.rawString << std::endl;
+  }
+
+  return 0;
 }
 
 /**
@@ -88,6 +157,10 @@ int Shell::executeBuiltin(Parser::Fragment &frag) {
   else if(frag.command == "exit") {
     return this->builtinExit(frag);
   }
+  // show backgrounded processes (jobs)?
+  else if(frag.command == "jobs") {
+    return this->builtinJobs(frag);
+  }
 
   // shouldn't get here
   throw std::runtime_error("Invalid builtin");
@@ -100,6 +173,89 @@ int Shell::executeBuiltin(Parser::Fragment &frag) {
  */
 int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
   // TODO: implement
+  return -1;
+}
+
+/**
+ * Executes a single process.
+ */
+int Shell::executeSingle(Parser::Fragment &frag) {
+  int err;
+
+  // fork to create a new process
+  pid_t child = fork();
+
+  if(child == -1) {
+    std::cout << "fork() failed: " << strerror(errno) << std::endl;
+    return child;
+  }
+
+  // run process only in child
+  if(child == 0) {
+    // TODO: attach files for IO redirection
+
+    // build argv
+    const size_t argvSize = sizeof(char *) * (frag.argv.size() + 1);
+    char **argv = static_cast<char **>(malloc(argvSize));
+
+    int i = 0;
+    for(auto arg = frag.argv.begin(); arg < frag.argv.end(); arg++) {
+      argv[i++] = const_cast<char *>(arg->c_str());
+    }
+
+    // null terminate argv!
+    argv[i] = nullptr;
+
+    // run exec
+    err = execvp(frag.command.c_str(), static_cast<char * const *>(argv));
+
+    // if we get down here, there was an error
+    std::cout << "Couldn't exec(): " << strerror(errno) << " (" << errno << ")"
+      << std::endl;
+    exit(errno);
+  }
+
+  // run only in parent
+  if(child != 0) {
+    // create a process object
+    Process p;
+
+    p.pid = child;
+    p.fragment = frag;
+
+    // if task isn't backgrounded, wait for it
+    if(!frag.background) {
+      int status = 0;
+      pid_t result = waitpid(child, &status, 0);
+
+      // did the process exit?
+      if(WIFEXITED(status)) {
+        // return with its exit code
+        return WEXITSTATUS(status);
+      }
+      // did the process receive a signal?
+      else if(WIFSIGNALED(status)) {
+        std::cout << "Child " << child << " exited on signal "
+          << WTERMSIG(status) << std::endl;
+
+        // check for coredump
+        if(WCOREDUMP(status)) {
+          std::cout << "Core dumped." << std::endl;
+        }
+
+        return -2;
+      }
+    }
+    // it is backgrounded, just add it to the background processes list
+    else {
+      this->backgroundProcesses.push_back(p);
+
+      // assume success
+      return 0;
+    }
+  }
+
+  // we shouldn't get here…
   return -1;
 }
 
@@ -121,7 +277,7 @@ int Shell::executeFragments(std::vector<Parser::Fragment> &fragments) {
     if(this->isFragmentBuiltin(frag)) {
       return this->executeBuiltin(frag);
     } else {
-      // TODO: implement
+      return this->executeSingle(frag);
     }
   }
   // otherwise, execute with piping
@@ -131,6 +287,8 @@ int Shell::executeFragments(std::vector<Parser::Fragment> &fragments) {
 
   return -1;
 }
+
+
 
 /**
  * Executes a command line given by the user.

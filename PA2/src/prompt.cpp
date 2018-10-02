@@ -108,6 +108,13 @@ void Prompt::start(void) {
       break;
     }
 
+    // was this line empty?
+    if(trim_copy(command).length() == 0) {
+      // reset error code and prompt for new input
+      this->lastReturnCode = 0;
+      continue;
+    }
+
     // add to history
     this->history.push_back(command);
 

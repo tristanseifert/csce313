@@ -62,7 +62,7 @@ int Parser::splitArguments(std::vector<Fragment> &result) {
 
     // save the program name and remove it from argv
     frag->command = frag->argv[0];
-    frag->argv.erase(frag->argv.begin());
+    // frag->argv.erase(frag->argv.begin());
   }
 
   // success

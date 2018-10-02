@@ -22,19 +22,25 @@ class Shell {
 
   private:
     class Process {
-      // PID of the process
-      pid_t pid;
-      // the fragment that spawned this process
-      Parser::Fragment fragment;
+      public:
+        // PID of the process
+        pid_t pid;
+        // the fragment that spawned this process
+        Parser::Fragment fragment;
     };
 
   private:
+    void killBackgroundedChildren(void);
+
     int executeBuiltin(Parser::Fragment &frag);
 
     int builtinCd(Parser::Fragment &frag);
     int builtinExit(Parser::Fragment &frag);
+    int builtinJobs(Parser::Fragment &frag);
 
     bool isFragmentBuiltin(Parser::Fragment &frag);
+
+    int executeSingle(Parser::Fragment &frag);
 
     int executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments);
     int executeFragments(std::vector<Parser::Fragment> &fragments);

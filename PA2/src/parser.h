@@ -22,6 +22,7 @@ class Parser {
       friend std::ostream &operator<<(std::ostream&, const Fragment&);
 
       public:
+        Fragment() {}
         Fragment(std::string raw) : rawString(raw) {}
 
       public:

@@ -6,6 +6,6 @@
 /**
  * Enables debug logging throughout the shell.
  */
-#define DBG_LOGGING         1
+#define DBG_LOGGING         0
 
 #endif

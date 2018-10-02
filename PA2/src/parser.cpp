@@ -6,6 +6,7 @@
 
 #include <string>
 #include <vector>
+#include <sstream>
 
 /**
  * Initializes the parser.
@@ -24,10 +25,90 @@ Parser::~Parser() {
 
 
 /**
+ * Splits arguments to all commands.
+ */
+int Parser::splitArguments(std::vector<Fragment> &result) {
+  for(auto frag = result.begin(); frag < result.end(); frag++) {
+    std::string command = frag->command;
+
+    // build the token in a string stream temporarily
+    std::stringstream token;
+    bool isInQuote = false;
+
+    for(int i = 0; i < command.length(); i++) {
+      // did we find a quote?
+      if(command[i] == '"' || command[i] == '\'') {
+        isInQuote = !isInQuote;
+      }
+
+      // if it's a space, and we're NOT in a quote, push the token
+      if(!isInQuote && ::isspace(command[i])) {
+        frag->argv.push_back(token.str());
+
+        // clear the tomen
+        token.str("");
+        token.clear();
+      }
+      // otherwise, just push the character, unless it's a quote
+      else if(command[i] != '"') {
+        token << command[i];
+      }
+    }
+
+    // push the last token, unless it's only spaces
+    if(trim_copy(token.str()).length() > 0) {
+      frag->argv.push_back(token.str());
+    }
+
+    // save the program name and remove it from argv
+    frag->command = frag->argv[0];
+    frag->argv.erase(frag->argv.begin());
+  }
+
+  // success
+  return 0;
+}
+
+/**
  * Determines whether any fragment should be backgrounded. This is done by just
  * checking if the fragment's raw text ends with an ampersand.
  */
 int Parser::determineBackgrounding(std::vector<Fragment> &result) {
+  for(auto frag = result.begin(); frag < result.end(); frag++) {
+    std::string command = frag->command;
+
+    // is there an ampersand in the command?
+    std::size_t found = command.find('&');
+
+    if(found == std::string::npos) {
+      // no, check the next fragment
+      continue;
+    }
+
+    // we expect an ampersand as the LAST character of the command
+    for(int i = (command.length() - 1); i > 0; i--) {
+      // is this an ampersand?
+      if(command[i] == '&') {
+        // set the background flag
+        frag->background = true;
+
+        // remove the ampersand from the command
+        frag->command = command.substr(0, i);
+
+        break;
+      }
+      // ignore spaces
+      else if(::isspace(command[i])) {
+        continue;
+      }
+      // any other character terminates the loop
+      else {
+        break;
+      }
+    }
+  }
+
+  // success
   return 0;
 }
 
@@ -75,10 +156,14 @@ beach: ;
           frag->redirectStdout = true;
           frag->stdoutFile = trim_copy(slice);
         }
+
+        // trim the command so the redirection is removed
+        frag->command = command.substr(0, i);
       }
     }
   }
 
+  // success
   return 0;
 }
 
@@ -161,6 +246,10 @@ int Parser::parseCommandLine(std::string command, std::vector<Fragment> &result)
   err = this->determineBackgrounding(result);
   if(err < 0) return err;
 
+  // split arguments to the commands
+  err = this->splitArguments(result);
+  if(err < 0) return err;
+
   // if there's no errors, return the number of fragments
   return result.size();
 }
@@ -171,8 +260,9 @@ int Parser::parseCommandLine(std::string command, std::vector<Fragment> &result)
  * Output operator for fragment
  */
 std::ostream &operator<<(std::ostream& os, const Parser::Fragment& fragment) {
-  os << "Fragment {raw = " << fragment.rawString << "; "
-     << "command = " << fragment.command << "; "
+  os << "Fragment {raw = \"" << fragment.rawString << "\"; "
+     << "command = \"" << fragment.command << "\"; "
+     << "argc = " << fragment.argv.size() << "; "
      << "background = " << fragment.background << "; "
      << "redirection = {";
 

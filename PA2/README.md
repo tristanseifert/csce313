@@ -1,4 +1,4 @@
-# 313 PA2
+# KUSH, the Kool Underdeveloped Shell
 This implements the second programming assignment, a basic shell.
 
 ## Compilation

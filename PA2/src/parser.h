@@ -30,6 +30,8 @@ class Parser {
 
         // command to actually execute
         std::string command;
+        // arguments to the command
+        std::vector<std::string> argv;
 
         // is the process running in the background?
         bool background = false;
@@ -46,6 +48,7 @@ class Parser {
     int parseCommandLine(std::string command, std::vector<Fragment> &result);
 
   private:
+    int splitArguments(std::vector<Fragment> &result);
     int determineBackgrounding(std::vector<Fragment> &result);
     int parseRedirection(std::vector<Fragment> &result);
     int splitByPipes(std::string &command, std::vector<Fragment> &result);

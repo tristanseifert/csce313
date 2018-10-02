@@ -1,6 +1,9 @@
+/* vim: set tabstop=2:softtabstop=2:shiftwidth=2:noexpandtab */
+
 #include "shell.h"
 
 #include "parser.h"
+#include "config.h"
 
 #include <iostream>
 #include <string>
@@ -40,13 +43,14 @@ int Shell::executeCommandLine(std::string command) {
     return err;
   }
 
+#if DBG_LOGGING
   // DEBUG: output fragments
   for(auto i = fragments.begin(); i < fragments.end(); i++) {
-    std::cout << "Fragment: " << i->rawString << std::endl;
+    std::cout << "\t" << *i << std::endl;
   }
+#endif
 
-  // execute the command
-  std::cout << "\treceived command: " << command << std::endl;
+  // TODO: execute the command
 
   return -1;
 }

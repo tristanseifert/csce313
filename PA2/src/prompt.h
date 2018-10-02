@@ -1,3 +1,5 @@
+/* vim: set tabstop=2:softtabstop=2:shiftwidth=2:noexpandtab */
+
 /**
  * Implements the prompt where the user can enter commands.
  */

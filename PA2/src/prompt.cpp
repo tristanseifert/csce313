@@ -1,3 +1,5 @@
+/* vim: set tabstop=2:softtabstop=2:shiftwidth=2:noexpandtab */ 
+
 #include "prompt.h"
 #include "shell.h"
 
@@ -37,9 +39,10 @@ Prompt::~Prompt() {
 /**
  * Formats the prompt string. There are several possible substitutions:
  *
- * - $USER: Current username
- * - $HOST: System hostname
- * - $DIR:  Current working directory
+ * - $USER:   Current username
+ * - $HOST:   System hostname
+ * - $DIR:    Current working directory
+ * - $STATUS: Return code of the last command.
  */
 std::string Prompt::formatPrompt(void) {
   int err;

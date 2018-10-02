@@ -1,3 +1,5 @@
+/* vim: set tabstop=2:softtabstop=2:shiftwidth=2:noexpandtab */
+
 /**
  * Implements the actual shell, which parses input given by the user, handles
  * the input redirection/piping and backgrounding processes.

@@ -104,8 +104,10 @@ void Prompt::start(void) {
     if(!std::cin) {
       std::cout << "exit" << std::endl;
 
+      // force the exit command so the shell can clean up
+      command = "exit";
+
       continueReading = false;
-      break;
     }
 
     // was this line empty?

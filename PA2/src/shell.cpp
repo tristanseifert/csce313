@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <signal.h>
+#include <fcntl.h>
 
 /**
  * Initializes the shell.
@@ -176,6 +177,62 @@ int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
   return -1;
 }
 
+
+
+/**
+ * Redirects the standard input/outputs as needed.
+ *
+ * @note This should only be called from within the child, after fork().
+ */
+int Shell::redirectIO(Parser::Fragment &frag) {
+  int err;
+
+  // does stdin need to be redirected?
+  if(frag.redirectStdin) {
+    int newStdin = open(frag.stdinFile.c_str(), O_RDONLY);
+
+    // handle errors
+    if(newStdin == -1) {
+      std::cout << "Couldn't open " << frag.stdinFile << ": "
+        << strerror(errno) << std::endl;
+
+      return errno;
+    }
+
+    // replace stdin
+    err = dup2(newStdin, STDIN_FILENO);
+
+    if(err == -1) {
+      std::cout << "dup2() failed: " << strerror(errno) << std::endl;
+      return errno;
+    }
+  }
+
+  // does stdout need to be redirected?
+  if(frag.redirectStdout) {
+    int newStdin = open(frag.stdoutFile.c_str(), (O_RDWR | O_TRUNC | O_CREAT), 0644);
+
+    // handle errors
+    if(newStdin == -1) {
+      std::cout << "Couldn't open " << frag.stdoutFile << ": "
+        << strerror(errno) << std::endl;
+
+      return errno;
+    }
+
+    // replace stdin
+    err = dup2(newStdin, STDOUT_FILENO);
+
+    if(err == -1) {
+      std::cout << "dup2() failed: " << strerror(errno) << std::endl;
+      return errno;
+    }
+  }
+
+  // success if we get down here
+  return 0;
+}
+
 /**
  * Executes a single process.
  */
@@ -192,7 +249,12 @@ int Shell::executeSingle(Parser::Fragment &frag) {
 
   // run process only in child
   if(child == 0) {
-    // TODO: attach files for IO redirection
+    // perform IO redirection
+    err = this->redirectIO(frag);
+
+    if(err != 0) {
+      return err;
+    }
 
     // build argv
     const size_t argvSize = sizeof(char *) * (frag.argv.size() + 1);

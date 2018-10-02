@@ -40,6 +40,8 @@ class Shell {
 
     bool isFragmentBuiltin(Parser::Fragment &frag);
 
+    int redirectIO(Parser::Fragment &frag);
+
     int executeSingle(Parser::Fragment &frag);
 
     int executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments);

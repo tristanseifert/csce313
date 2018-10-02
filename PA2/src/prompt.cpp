@@ -1,4 +1,4 @@
-/* vim: set tabstop=2:softtabstop=2:shiftwidth=2:noexpandtab */ 
+/* vim: set tabstop=2:softtabstop=2:shiftwidth=2:noexpandtab */
 
 #include "prompt.h"
 #include "shell.h"
@@ -68,6 +68,19 @@ std::string Prompt::formatPrompt(void) {
     replace(prompt, "$HOST", "UNKNOWN");
   }
 
+  // substitute cwd
+  char *cwd = getcwd(nullptr, 0);
+
+  if(cwd != nullptr) {
+    replace(prompt, "$DIR", std::string(cwd));
+    free(cwd);
+  } else {
+    replace(prompt, "$DIR", "UNKNOWN");
+  }
+
+  // substitute return code of last command
+  replace(prompt, "$STATUS", std::to_string(this->lastReturnCode));
+
   return prompt;
 }
 
@@ -95,7 +108,12 @@ void Prompt::start(void) {
       break;
     }
 
+    // add to history
+    this->history.push_back(command);
+
     // pass command to the shell
     err = shell->executeCommandLine(command);
+
+    this->lastReturnCode = err;
   }
 }

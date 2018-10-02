@@ -7,6 +7,7 @@
 #define PROMPT_H
 
 #include <string>
+#include <vector>
 
 class Shell;
 
@@ -21,10 +22,16 @@ class Prompt {
     std::string formatPrompt(void);
 
   private:
+    // history of commands
+    std::vector<std::string> history;
+
     // should the prompt be shown?
     bool showPrompt = false;
     // prompt string
-    std::string prompt = "$USER@$HOST $ ";
+    std::string prompt = "[$STATUS] $USER@$HOST - $DIR $ ";
+
+    // last return code
+    int lastReturnCode = 0;
 
 
 

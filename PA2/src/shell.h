@@ -7,9 +7,10 @@
 #ifndef SHELL_H
 #define SHELL_H
 
-#include <string>
+#include "parser.h"
 
-class Parser;
+#include <string>
+#include <vector>
 
 class Shell {
   public:
@@ -20,7 +21,28 @@ class Shell {
     int executeCommandLine(std::string command);
 
   private:
+    class Process {
+      // PID of the process
+      pid_t pid;
+      // the fragment that spawned this process
+      Parser::Fragment fragment;
+    };
+
+  private:
+    int executeBuiltin(Parser::Fragment &frag);
+
+    int builtinCd(Parser::Fragment &frag);
+    int builtinExit(Parser::Fragment &frag);
+
+    bool isFragmentBuiltin(Parser::Fragment &frag);
+
+    int executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments);
+    int executeFragments(std::vector<Parser::Fragment> &fragments);
+
+  private:
     Parser *parser = nullptr;
+
+    std::vector<Process> backgroundProcesses;
 };
 
 

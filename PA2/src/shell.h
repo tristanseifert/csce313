@@ -7,6 +7,8 @@
 
 #include <string>
 
+class Parser;
+
 class Shell {
   public:
     Shell();
@@ -16,6 +18,7 @@ class Shell {
     int executeCommandLine(std::string command);
 
   private:
+    Parser *parser = nullptr;
 };
 
 

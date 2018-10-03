@@ -170,7 +170,7 @@ int Shell::executeBuiltin(Parser::Fragment &frag) {
 
 
 /**
- * Executes multiple fragments by piping between them.
+ * Executes multiple fragments by piping between them with ¥enpipes
  *
  * The first fragment has its stdin connected to the console (or redirected,)
  * and the last fragment has its stdout connected to the console (or redirected)
@@ -239,27 +239,51 @@ int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
     }
     // or is it the last process? (redirect stdout if needed)
     else if(it == (fragments.end() - 1)) {
-      int newStdin = open(it->stdoutFile.c_str(), (O_RDWR | O_TRUNC | O_CREAT), 0644);
+      if(it->redirectStdout) {
+        int newStdin = open(it->stdoutFile.c_str(), (O_RDWR | O_TRUNC | O_CREAT), 0644);
 
-      // handle errors
-      if(newStdin == -1) {
-        std::cout << "Couldn't open " << it->stdoutFile << ": "
-          << strerror(errno) << std::endl;
+        // handle errors
+        if(newStdin == -1) {
+          std::cout << "Couldn't open " << it->stdoutFile << ": "
+            << strerror(errno) << std::endl;
 
-        return errno;
-      }
+          return errno;
+        }
 
-      // replace stdin
-      err = dup2(newStdin, STDOUT_FILENO);
+        // replace stdin
+        err = dup2(newStdin, STDOUT_FILENO);
 
-      if(err == -1) {
-        std::cout << "dup2() failed: " << strerror(errno) << std::endl;
-        return errno;
+        if(err == -1) {
+          std::cout << "dup2() failed: " << strerror(errno) << std::endl;
+          return errno;
+        }
       }
     }
-    // connect the pipes as needed
-    else {
-      // TODO: kush
+    // connect the ¥enpipes as needed
+    {
+      // connect stdout
+      int stdOutIndex = (i - 0);
+
+      if(stdOutIndex <= MAX_PIPES) {
+        err = dup2(pipes[stdOutIndex][1], STDOUT_FILENO);
+
+        if(err == -1) {
+          std::cout << "dup2() failed: " << strerror(errno) << std::endl;
+          return errno;
+        }
+      }
+
+      // connect stdin
+      int stdinIndex = (i - 1);
+
+      if(stdinIndex <= MAX_PIPES) {
+        err = dup2(pipes[stdinIndex][1], STDIN_FILENO);
+
+        if(err == -1) {
+          std::cout << "dup2() failed: " << strerror(errno) << std::endl;
+          return errno;
+        }
+      }
     }
 
     // build argv

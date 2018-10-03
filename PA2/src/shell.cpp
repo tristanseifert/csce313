@@ -214,10 +214,20 @@ int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
       goto cleanup;
     }
 
-    // is this the first process? (redirect stdin if needed)
-    if(it == fragments.begin()) {
-      // does stdin need to be redirected?
-      if(it->redirectStdin) {
+    // push that process into the list
+    if(child != 0) {
+      Process p;
+      p.pid = child;
+      p.fragment = *it;
+
+      processes.push_back(p);
+    }
+
+
+    // connect the ¥enpipes in the child
+    if(child == 0) {
+      // redirect stdin for the first process if needed
+      if(it == fragments.begin() && it->redirectStdin) {
         int newStdin = open(it->stdinFile.c_str(), O_RDONLY);
 
         // handle errors
@@ -236,14 +246,12 @@ int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
           return errno;
         }
       }
-    }
-    // or is it the last process? (redirect stdout if needed)
-    else if(it == (fragments.end() - 1)) {
-      if(it->redirectStdout) {
-        int newStdin = open(it->stdoutFile.c_str(), (O_RDWR | O_TRUNC | O_CREAT), 0644);
+      // redirect stdout for the first process if needed
+      else if(it == (fragments.end() - 1) && it->redirectStdout) {
+        int newStdout = open(it->stdoutFile.c_str(), (O_RDWR | O_TRUNC | O_CREAT), 0644);
 
         // handle errors
-        if(newStdin == -1) {
+        if(newStdout == -1) {
           std::cout << "Couldn't open " << it->stdoutFile << ": "
             << strerror(errno) << std::endl;
 
@@ -251,21 +259,7 @@ int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
         }
 
         // replace stdin
-        err = dup2(newStdin, STDOUT_FILENO);
-
-        if(err == -1) {
-          std::cout << "dup2() failed: " << strerror(errno) << std::endl;
-          return errno;
-        }
-      }
-    }
-    // connect the ¥enpipes as needed
-    {
-      // connect stdout
-      int stdOutIndex = (i - 0);
-
-      if(stdOutIndex <= MAX_PIPES) {
-        err = dup2(pipes[stdOutIndex][1], STDOUT_FILENO);
+        err = dup2(newStdout, STDOUT_FILENO);
 
         if(err == -1) {
           std::cout << "dup2() failed: " << strerror(errno) << std::endl;
@@ -273,42 +267,49 @@ int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
         }
       }
 
-      // connect stdin
-      int stdinIndex = (i - 1);
+      // connect the ¥enpipes as needed
+      {
+        // connect stdout
+        int stdOutIndex = (i - 0);
 
-      if(stdinIndex <= MAX_PIPES) {
-        err = dup2(pipes[stdinIndex][1], STDIN_FILENO);
+        // if(stdOutIndex <= MAX_PIPES) {
+          err = dup2(pipes[stdOutIndex][1], STDOUT_FILENO);
 
-        if(err == -1) {
-          std::cout << "dup2() failed: " << strerror(errno) << std::endl;
-          return errno;
+          if(err == -1) {
+            std::cout << "dup2() failed: " << strerror(errno) << std::endl;
+            return errno;
+          }
+        // }
+
+        // connect stdin
+        int stdinIndex = (i - 1);
+
+        if(stdinIndex <= MAX_PIPES) {
+          err = dup2(pipes[stdinIndex][0], STDIN_FILENO);
+
+          if(err == -1) {
+            std::cout << "dup2() failed: " << strerror(errno) << std::endl;
+            return errno;
+          }
         }
       }
+
+      // exec the process
+      err = this->execFragment(*it);
+
+      // if we get down here, there was an error
+      std::cout << "Couldn't exec(): " << strerror(errno) << " (" << errno << ")"
+        << std::endl;
+      goto cleanup;
     }
-
-    // build argv
-    const size_t argvSize = sizeof(char *) * (it->argv.size() + 1);
-    char **argv = static_cast<char **>(malloc(argvSize));
-
-    int i = 0;
-    for(auto arg = it->argv.begin(); arg < it->argv.end(); arg++) {
-      argv[i++] = const_cast<char *>(arg->c_str());
-    }
-
-    // null terminate argv!
-    argv[i] = nullptr;
-
-    // run exec
-    err = execvp(it->command.c_str(), static_cast<char * const *>(argv));
-
-    // if we get down here, there was an error
-    std::cout << "Couldn't exec(): " << strerror(errno) << " (" << errno << ")"
-      << std::endl;
-    goto cleanup;
   }
 
-  // TODO: implement
-  return -1;
+  // TODO: wait for process completion
+  std::cout << "\tTODO: wait for completion of " << processes.size()
+    << " processes" << std::endl;
+
+  // TODO: return result code
+  return 0;
 
   // drop down here if an error occurrs during process creation
 cleanup: ;
@@ -329,6 +330,35 @@ cleanup: ;
 }
 
 
+
+/**
+ * Executes the given fragment.
+ *
+ * @note This function will NOT return unless there is an error.
+ */
+int Shell::execFragment(Parser::Fragment &frag) {
+  int err;
+
+  // build argv
+  const size_t argvSize = sizeof(char *) * (frag.argv.size() + 1);
+  char **argv = static_cast<char **>(malloc(argvSize));
+
+  int i = 0;
+  for(auto arg = frag.argv.begin(); arg < frag.argv.end(); arg++) {
+    argv[i++] = const_cast<char *>(arg->c_str());
+  }
+
+  // null terminate argv!
+  argv[i] = nullptr;
+
+  // run exec
+  err = execvp(frag.command.c_str(), static_cast<char * const *>(argv));
+
+  // if we get down here, there was an error
+  std::cout << "Couldn't exec(): " << strerror(errno) << " (" << errno << ")"
+    << std::endl;
+  return err;
+}
 
 /**
  * Redirects the standard input/outputs as needed.
@@ -407,24 +437,10 @@ int Shell::executeSingle(Parser::Fragment &frag) {
       return err;
     }
 
-    // build argv
-    const size_t argvSize = sizeof(char *) * (frag.argv.size() + 1);
-    char **argv = static_cast<char **>(malloc(argvSize));
+    // execute the process
+    err = this->execFragment(frag);
 
-    int i = 0;
-    for(auto arg = frag.argv.begin(); arg < frag.argv.end(); arg++) {
-      argv[i++] = const_cast<char *>(arg->c_str());
-    }
-
-    // null terminate argv!
-    argv[i] = nullptr;
-
-    // run exec
-    err = execvp(frag.command.c_str(), static_cast<char * const *>(argv));
-
-    // if we get down here, there was an error
-    std::cout << "Couldn't exec(): " << strerror(errno) << " (" << errno << ")"
-      << std::endl;
+    // exit if we get down here
     exit(errno);
   }
 
@@ -436,7 +452,7 @@ int Shell::executeSingle(Parser::Fragment &frag) {
     p.pid = child;
     p.fragment = frag;
 
-    // if task isn't backgrounded, wait for it
+    // if task isn't backgrounded, wait for it to exit
     if(!frag.background) {
       int status = 0;
       pid_t result = waitpid(child, &status, 0);
@@ -456,7 +472,8 @@ int Shell::executeSingle(Parser::Fragment &frag) {
           std::cout << "Core dumped." << std::endl;
         }
 
-        return -2;
+        // return the signal
+        return -WTERMSIG(status);
       }
     }
     // it is backgrounded, just add it to the background processes list
@@ -471,6 +488,8 @@ int Shell::executeSingle(Parser::Fragment &frag) {
   // we shouldn't get here…
   return -1;
 }
+
+
 
 /**
  * Executes one or more fragments.

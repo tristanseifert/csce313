@@ -42,6 +42,8 @@ class Shell {
 
     int redirectIO(Parser::Fragment &frag);
 
+    int execFragment(Parser::Fragment &frag);
+
     int executeSingle(Parser::Fragment &frag);
 
     int executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments);

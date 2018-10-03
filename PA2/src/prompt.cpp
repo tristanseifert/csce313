@@ -5,6 +5,8 @@
 
 #include "helpers.h"
 
+#include "inih.h"
+
 #include <iostream>
 #include <string>
 
@@ -22,6 +24,9 @@
  * Creates the prompt class.
  */
 Prompt::Prompt(bool _s) : showPrompt(_s) {
+  // try to read the kushrc
+  this->readKushrc();
+
   // set up shell
   this->shell = new Shell();
 }
@@ -32,6 +37,39 @@ Prompt::Prompt(bool _s) : showPrompt(_s) {
 Prompt::~Prompt() {
   // clean up
   delete this->shell;
+}
+
+
+
+/**
+ * Attempts to read the kushrc file.
+ */
+void Prompt::readKushrc(void) {
+  INIReader reader(".kushrc");
+
+  if(reader.ParseError() < 0) {
+    std::cout << "Couldn't read .kushrc, using defaults" << std::endl;
+    return;
+  }
+
+  // read the prompt
+  this->prompt = reader.Get("prompt", "text", this->prompt) + " ";
+  this->prompt = this->convertEscapes(this->prompt);
+}
+
+/**
+ * Converts escape sequences.
+ */
+std::string Prompt::convertEscapes(std::string &in) {
+  std::string escaped = in;
+
+  // replace /e, used for colors
+  replaceAll(escaped, "\\e", "\e");
+
+  // newline
+  replaceAll(escaped, "\\n", "\n");
+
+  return escaped;
 }
 
 
@@ -79,7 +117,15 @@ std::string Prompt::formatPrompt(void) {
   }
 
   // substitute return code of last command
-  replace(prompt, "$STATUS", std::to_string(this->lastReturnCode));
+  std::string statusCodeStr = std::to_string(this->lastReturnCode);
+  replace(prompt, "$STATUS", statusCodeStr);
+
+  // colored status code
+  if(this->lastReturnCode == 0) {
+    replace(prompt, "$COLORSTATUS", "\e[32m" + statusCodeStr + "\e[0m");
+  } else {
+    replace(prompt, "$COLORSTATUS", "\e[31m" + statusCodeStr + "\e[0m");
+  }
 
   return prompt;
 }

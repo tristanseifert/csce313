@@ -10,6 +10,4 @@ The built shell is in `build/kush`.
 Basic shell features, such as pipes and IO redirection are implemented with a bash-style syntax.
 
 ### Customization
-To customize the shell, place a file named `.kushrc` in the directory you invoke the shell from, or your home directory. (The project ships with a basic `.kushrc` in this directory, so if you invoke the shell as `./build/kush` it will pull in those settings.)
-
-Consult `kushrc.sample` for an annotated example file.
+To customize the shell, place a file named `.kushrc` in the directory you invoke the shell from. (The project ships with a basic `.kushrc` in this directory, so if you invoke the shell as `./build/kush` it will pull in those settings.)

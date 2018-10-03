@@ -57,5 +57,9 @@ static bool replace(std::string& str, const std::string& from, const std::string
     return true;
 }
 
+static void replaceAll(std::string& str, const std::string& from, const std::string& to) {
+  while(replace(str, from, to) == true) {}
+}
+
 
 #endif

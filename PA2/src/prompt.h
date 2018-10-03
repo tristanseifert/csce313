@@ -21,6 +21,9 @@ class Prompt {
   private:
     std::string formatPrompt(void);
 
+    void readKushrc(void);
+    std::string convertEscapes(std::string &in);
+
   private:
     // history of commands
     std::vector<std::string> history;

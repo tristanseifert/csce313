@@ -1,0 +1,11 @@
+[prompt]
+# Text to show as the prompt. You can substitute $STATUS, $USER, $HOST, and
+# $DIR. A trailing space is automatically added.
+# To colorize the status code (0 is green, any other color is red) you can
+# use $COLORSTATUS.
+
+# regular, colorized single-line prompt
+text = {$COLORSTATUS} \e[31m$USER\e[0m@\e[34m$HOST\e[0m - \e[32m$DIR\e[0m $
+
+# a two-line prompt
+#text = {$COLORSTATUS} \e[32m$DIR\e[0m\n\e[31m$USER\e[0m@\e[34m$HOST\e[0m $

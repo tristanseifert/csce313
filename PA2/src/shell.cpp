@@ -3,6 +3,7 @@
 #include "shell.h"
 
 #include "parser.h"
+#include "helpers.h"
 #include "config.h"
 
 #include <iostream>
@@ -85,12 +86,17 @@ int Shell::builtinCd(Parser::Fragment &frag) {
   int err;
 
   // if no arguments, do nothing
-  if(frag.argv.size() == 0) {
+  if(frag.argv.size() == 1) {
     return 0;
   }
 
   // get the path to change to
-  std::string path = frag.argv[0];
+  std::string path = frag.argv[1];
+
+  // if the path is just a dash, go up one directory
+  if(trim_copy(path) == "-") {
+    path = "..";
+  }
 
   // change to it and handle errors
   err = chdir(path.c_str());
@@ -178,7 +184,7 @@ int Shell::executeBuiltin(Parser::Fragment &frag) {
  * before them.
  */
 int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
-  int err;
+  int err, status;
   pid_t waitFor;
 
   // is there more fragments than we can allocate pipes for?
@@ -310,7 +316,40 @@ int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
   }
 
   // wait for the last process in the pipe to complete
-  return this->waitForProcess(processes.back());
+  // status = this->waitForProcess(processes.back());
+
+  // wait for any process to complete
+  err = wait(&status);
+
+  if(err == -1) {
+    std::cout << "Error waiting: " << strerror(errno) << std::endl;
+  }
+
+  // extract the exit code
+  if(WIFEXITED(status)) {
+    status = WEXITSTATUS(status);
+  }
+
+  // close all pipes
+  for(int i = 0; i < fragments.size(); i++) {
+    // make sure to close both ends
+    for(int j = 0; j < 2; j++) {
+      err = close(pipes[i][j]);
+      if(err) {
+        std::cout << "Couldn't close pipe: " << strerror(errno) << std::endl;
+      }
+    }
+  }
+
+  // kill all the processes we spawned, ignoring any errors
+  sleep(1);
+
+  for(auto it = processes.begin(); it < processes.end(); it++) {
+    kill(it->pid, SIGKILL);
+  }
+
+  // return status code
+  return status;
 
   // drop down here if an error occurrs during process creation
 cleanup: ;

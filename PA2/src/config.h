@@ -8,4 +8,9 @@
  */
 #define DBG_LOGGING         0
 
+/**
+ * Maximum number of pipes to support
+ */
+#define MAX_PIPES           64
+
 #endif

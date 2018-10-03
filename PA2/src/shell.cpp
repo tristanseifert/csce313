@@ -171,9 +171,136 @@ int Shell::executeBuiltin(Parser::Fragment &frag) {
 
 /**
  * Executes multiple fragments by piping between them.
+ *
+ * The first fragment has its stdin connected to the console (or redirected,)
+ * and the last fragment has its stdout connected to the console (or redirected)
+ * while the remaining processes take their input from the output of the process
+ * before them.
  */
 int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
+  int err;
+
+  // is there more fragments than we can allocate pipes for?
+  if(fragments.size() > MAX_PIPES) {
+    std::cout << "Couldn't set up processes: max pipes exceeded" << std::endl;
+    return -1;
+  }
+
+  // Create pipes (one per fragment; [0] is stdin, [1] is stdout)
+  int pipes[MAX_PIPES][2];
+
+  for(int i = 0; i < fragments.size(); i++) {
+    // attempt to create pipes
+    err = pipe(pipes[i]);
+
+    if(err != 0) {
+      // XXX: probably should clean up pipes but lol
+      std::cout << "Couldn't create pipe: " << strerror(errno) << std::endl;
+      return -1;
+    }
+  }
+
+  // keep track of all the processes we spawn
+  std::vector<Process> processes;
+
+  int i = 0;
+
+  for(auto it = fragments.begin(); it < fragments.end(); it++, i++) {
+    // fork the process to create a child
+    pid_t child = fork();
+
+    if(child == -1) {
+      std::cout << "fork() failed: " << strerror(errno) << std::endl;
+      goto cleanup;
+    }
+
+    // is this the first process? (redirect stdin if needed)
+    if(it == fragments.begin()) {
+      // does stdin need to be redirected?
+      if(it->redirectStdin) {
+        int newStdin = open(it->stdinFile.c_str(), O_RDONLY);
+
+        // handle errors
+        if(newStdin == -1) {
+          std::cout << "Couldn't open " << it->stdinFile << ": "
+            << strerror(errno) << std::endl;
+
+          return errno;
+        }
+
+        // replace stdin
+        err = dup2(newStdin, STDIN_FILENO);
+
+        if(err == -1) {
+          std::cout << "dup2() failed: " << strerror(errno) << std::endl;
+          return errno;
+        }
+      }
+    }
+    // or is it the last process? (redirect stdout if needed)
+    else if(it == (fragments.end() - 1)) {
+      int newStdin = open(it->stdoutFile.c_str(), (O_RDWR | O_TRUNC | O_CREAT), 0644);
+
+      // handle errors
+      if(newStdin == -1) {
+        std::cout << "Couldn't open " << it->stdoutFile << ": "
+          << strerror(errno) << std::endl;
+
+        return errno;
+      }
+
+      // replace stdin
+      err = dup2(newStdin, STDOUT_FILENO);
+
+      if(err == -1) {
+        std::cout << "dup2() failed: " << strerror(errno) << std::endl;
+        return errno;
+      }
+    }
+    // connect the pipes as needed
+    else {
+      // TODO: kush
+    }
+
+    // build argv
+    const size_t argvSize = sizeof(char *) * (it->argv.size() + 1);
+    char **argv = static_cast<char **>(malloc(argvSize));
+
+    int i = 0;
+    for(auto arg = it->argv.begin(); arg < it->argv.end(); arg++) {
+      argv[i++] = const_cast<char *>(arg->c_str());
+    }
+
+    // null terminate argv!
+    argv[i] = nullptr;
+
+    // run exec
+    err = execvp(it->command.c_str(), static_cast<char * const *>(argv));
+
+    // if we get down here, there was an error
+    std::cout << "Couldn't exec(): " << strerror(errno) << " (" << errno << ")"
+      << std::endl;
+    goto cleanup;
+  }
+
   // TODO: implement
+  return -1;
+
+  // drop down here if an error occurrs during process creation
+cleanup: ;
+  // kill all processes we spawned so far
+  for(auto it = processes.begin(); it < processes.end(); it++) {
+    // kill it
+    err = kill(it->pid, SIGKILL);
+
+    // handle errors… we're basically fucked at this point but try to continue
+    if(err != 0) {
+      std::cout << "kill() failed: " << strerror(errno) << std::endl;
+      return -1;
+    }
+  }
+
+  // return -1 bc fuck it
   return -1;
 }
 

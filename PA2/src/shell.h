@@ -43,6 +43,7 @@ class Shell {
     int redirectIO(Parser::Fragment &frag);
 
     int execFragment(Parser::Fragment &frag);
+    int waitForProcess(Process &proc);
 
     int executeSingle(Parser::Fragment &frag);
 

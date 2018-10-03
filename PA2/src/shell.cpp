@@ -179,6 +179,7 @@ int Shell::executeBuiltin(Parser::Fragment &frag) {
  */
 int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
   int err;
+  pid_t waitFor;
 
   // is there more fragments than we can allocate pipes for?
   if(fragments.size() > MAX_PIPES) {
@@ -269,23 +270,27 @@ int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
 
       // connect the ¥enpipes as needed
       {
-        // connect stdout
-        int stdOutIndex = (i - 0);
+        // connect stdin
+        int stdinIndex = (i - 1);
 
-        // if(stdOutIndex <= MAX_PIPES) {
-          err = dup2(pipes[stdOutIndex][1], STDOUT_FILENO);
+        if(stdinIndex >= 0) {
+          // std::cout << "stdin for " << i << " is " << stdinIndex << std::endl;
+
+          err = dup2(pipes[stdinIndex][0], STDIN_FILENO);
 
           if(err == -1) {
             std::cout << "dup2() failed: " << strerror(errno) << std::endl;
             return errno;
           }
-        // }
+        }
 
-        // connect stdin
-        int stdinIndex = (i - 1);
+        // connect stdout for all but the last process
+        int stdOutIndex = (i - 0);
 
-        if(stdinIndex <= MAX_PIPES) {
-          err = dup2(pipes[stdinIndex][0], STDIN_FILENO);
+        if(i < (fragments.size() - 1)) {
+          // std::cout << "stdout for " << i << " is " << stdOutIndex << std::endl;
+
+          err = dup2(pipes[stdOutIndex][1], STDOUT_FILENO);
 
           if(err == -1) {
             std::cout << "dup2() failed: " << strerror(errno) << std::endl;
@@ -304,12 +309,8 @@ int Shell::executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments) {
     }
   }
 
-  // TODO: wait for process completion
-  std::cout << "\tTODO: wait for completion of " << processes.size()
-    << " processes" << std::endl;
-
-  // TODO: return result code
-  return 0;
+  // wait for the last process in the pipe to complete
+  return this->waitForProcess(processes.back());
 
   // drop down here if an error occurrs during process creation
 cleanup: ;
@@ -330,6 +331,37 @@ cleanup: ;
 }
 
 
+
+/**
+ * Waits for the given process to finish, then returns its return code or
+ * some other value indicating the error.
+ */
+int Shell::waitForProcess(Process &proc) {
+  int status = 0;
+  pid_t result = waitpid(proc.pid, &status, 0);
+
+  // did the process exit?
+  if(WIFEXITED(status)) {
+    // return with its exit code
+    return WEXITSTATUS(status);
+  }
+  // did the process receive a signal?
+  else if(WIFSIGNALED(status)) {
+    std::cout << "Child " << proc.pid << " exited on signal "
+      << WTERMSIG(status) << std::endl;
+
+    // check for coredump
+    if(WCOREDUMP(status)) {
+      std::cout << "Core dumped." << std::endl;
+    }
+
+    // return the signal
+    return -WTERMSIG(status);
+  }
+
+  // shouldn't get down here, so return raw status
+  return status;
+}
 
 /**
  * Executes the given fragment.
@@ -454,27 +486,7 @@ int Shell::executeSingle(Parser::Fragment &frag) {
 
     // if task isn't backgrounded, wait for it to exit
     if(!frag.background) {
-      int status = 0;
-      pid_t result = waitpid(child, &status, 0);
-
-      // did the process exit?
-      if(WIFEXITED(status)) {
-        // return with its exit code
-        return WEXITSTATUS(status);
-      }
-      // did the process receive a signal?
-      else if(WIFSIGNALED(status)) {
-        std::cout << "Child " << child << " exited on signal "
-          << WTERMSIG(status) << std::endl;
-
-        // check for coredump
-        if(WCOREDUMP(status)) {
-          std::cout << "Core dumped." << std::endl;
-        }
-
-        // return the signal
-        return -WTERMSIG(status);
-      }
+      return this->waitForProcess(p);
     }
     // it is backgrounded, just add it to the background processes list
     else {

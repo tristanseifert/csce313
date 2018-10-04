@@ -10,6 +10,9 @@
 #include <string>
 #include <stdexcept>
 
+#include <cstdio>
+#include <cstring>
+
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <unistd.h>

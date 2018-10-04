@@ -22,7 +22,7 @@ INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 # flags for the C and C++ compiler
-CPPFLAGS ?= -g $(INC_FLAGS) -MMD -MP -std=c++1z -fno-strict-aliasing
+CPPFLAGS ?= -g $(INC_FLAGS) -MMD -MP -std=c++11 -fno-strict-aliasing
 CFLAGS ?= -g -fno-strict-aliasing
 
 # flags for the linker

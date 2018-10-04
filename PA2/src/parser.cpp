@@ -50,7 +50,7 @@ int Parser::splitArguments(std::vector<Fragment> &result) {
         token.clear();
       }
       // otherwise, just push the character, unless it's a quote
-      else if(command[i] != '"') {
+      else if(command[i] != '"' && command[i] != '\'') {
         token << command[i];
       }
     }
@@ -136,7 +136,7 @@ beach: ;
     // go through the command and find the first non-quoted < or >
     for(int i = 0; i < command.length(); i++) {
       // did we find a quote?
-      if(command[i] == '"') {
+      if(command[i] == '"' || command[i] == '\'') {
         isInQuote = !isInQuote;
       }
 
@@ -189,7 +189,7 @@ int Parser::splitByPipes(std::string &command, std::vector<Fragment> &result) {
 
   for(int i = 0; i < command.length(); i++) {
     // did we find a quote?
-    if(command[i] == '"') {
+    if(command[i] == '"' || command[i] == '\'') {
       isInQuote = !isInQuote;
     }
 

@@ -139,8 +139,10 @@ void Prompt::start(void) {
   bool continueReading = true;
 
   while(continueReading) {
-    // print the prompt
-    std::cout << this->formatPrompt();
+    if(this->showPrompt) {
+      // print the prompt
+      std::cout << this->formatPrompt();
+    }
 
     // read input
     std::string command;

@@ -14,6 +14,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <time.h>
 
 // define HOST_NAME_MAX if not defined by system (on macOS)
 #ifndef HOST_NAME_MAX
@@ -81,6 +82,8 @@ std::string Prompt::convertEscapes(std::string &in) {
  * - $HOST:   System hostname
  * - $DIR:    Current working directory
  * - $STATUS: Return code of the last command.
+ * - $DATE:   Current date
+ * - $TIME:   Current time
  */
 std::string Prompt::formatPrompt(void) {
   int err;
@@ -126,6 +129,28 @@ std::string Prompt::formatPrompt(void) {
   } else {
     replace(prompt, "$COLORSTATUS", "\e[31m" + statusCodeStr + "\e[0m");
   }
+
+  // get the time
+  time_t t = time(NULL);
+  struct tm *tm = localtime(&t);
+
+  // format date string
+  const size_t dateBufSz = 64;
+  char dateBuf[dateBufSz];
+  memset(dateBuf, 0, dateBufSz);
+
+  strftime(dateBuf, dateBufSz, "%x", tm);
+
+  replace(prompt, "$DATE", std::string(dateBuf));
+
+  // format time string
+  const size_t timeBufSz = 64;
+  char timeBuf[timeBufSz];
+  memset(timeBuf, 0, timeBufSz);
+
+  strftime(timeBuf, timeBufSz, "%X", tm);
+
+  replace(prompt, "$TIME", std::string(timeBuf));
 
   return prompt;
 }

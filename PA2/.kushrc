@@ -5,7 +5,7 @@
 # use $COLORSTATUS.
 
 # regular, colorized single-line prompt
-text = {$COLORSTATUS} \e[31m$USER\e[0m@\e[34m$HOST\e[0m - \e[32m$DIR\e[0m $
+text = {$COLORSTATUS} \e[31m$USER\e[0m@\e[34m$HOST\e[0m - \e[32m$DIR\e[0m ($DATE $TIME) $
 
 # a two-line prompt
 #text = {$COLORSTATUS} \e[32m$DIR\e[0m\n\e[31m$USER\e[0m@\e[34m$HOST\e[0m $

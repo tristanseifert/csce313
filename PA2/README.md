@@ -11,3 +11,6 @@ Basic shell features, such as pipes and IO redirection are implemented with a ba
 
 ### Customization
 To customize the shell, place a file named `.kushrc` in the directory you invoke the shell from. (The project ships with a basic `.kushrc` in this directory, so if you invoke the shell as `./build/kush` it will pull in those settings.)
+
+## Dependencies
+This project uses [inih](https://github.com/jtilly/inih) to parse the `.kushrc` file.

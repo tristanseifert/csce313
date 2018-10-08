@@ -45,13 +45,20 @@ Shell::~Shell() {
  */
 void Shell::killBackgroundedChildren(void) {
   int err;
+  int killed = 0;
 
   // exit if we don't have children
   if(this->backgroundProcesses.empty()) return;
 
   for(auto it = this->backgroundProcesses.begin(); it < this->backgroundProcesses.end(); it++) {
+    // is the process still alive?
+    err = kill(it->pid, 0);
+
+    if(err != 0) continue;
+
     // kill the process
     err = kill(it->pid, SIGKILL);
+    killed++;
 
     if(err != 0) {
       std::cout << "\tCouldn't kill background process " << it->pid << ": "
@@ -60,8 +67,10 @@ void Shell::killBackgroundedChildren(void) {
   }
 
   // print a message indicating how many background processes were killed
-  std::cout << "Killed " << this->backgroundProcesses.size()
-    << " background processes" << std::endl;
+  if(killed > 0) {
+    std::cout << "Killed " << this->backgroundProcesses.size()
+      << " background processes" << std::endl;
+    }
 }
 
 
@@ -581,6 +590,16 @@ int Shell::executeFragments(std::vector<Parser::Fragment> &fragments) {
  */
 int Shell::executeCommandLine(std::string command) {
   int err;
+
+  // reap any zombies
+  err = wait3(NULL, WNOHANG, NULL);
+
+  if(err == -1) {
+    // ignore ENOCHILD
+    if(errno != ECHILD) {
+      std::cout << "wait3() failed: " << strerror(errno) << std::endl;
+    }
+  }
 
   // parse the command line
   std::vector<Parser::Fragment> fragments;

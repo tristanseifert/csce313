@@ -48,7 +48,7 @@ class Shell {
     int executeSingle(Parser::Fragment &frag);
 
     int executeFragmentsWithPipes(std::vector<Parser::Fragment> &fragments);
-    int executeFragments(std::vector<Parser::Fragment> &fragments);
+    int executeFragments(std::vector<Parser::Fragment> &fragments, std::string raw = "");
 
   private:
     Parser *parser = nullptr;

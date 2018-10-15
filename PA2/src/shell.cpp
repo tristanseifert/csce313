@@ -474,7 +474,7 @@ int Shell::redirectIO(Parser::Fragment &frag) {
 
   // does stdout need to be redirected?
   if(frag.redirectStdout) {
-    int newStdin = open(frag.stdoutFile.c_str(), (O_RDWR | O_TRUNC | O_CREAT), 0644);
+    int newStdin = open(frag.stdoutFile.c_str(), (O_RDWR | O_TRUNC | O_CREAT), 0664);
 
     // handle errors
     if(newStdin == -1) {
@@ -564,7 +564,7 @@ int Shell::executeSingle(Parser::Fragment &frag) {
  *
  * Returns the exit code of the rightmost fragment.
  */
-int Shell::executeFragments(std::vector<Parser::Fragment> &fragments) {
+int Shell::executeFragments(std::vector<Parser::Fragment> &fragments, std::string raw) {
   // is there only one fragment? if so, execute it directly
   if(fragments.size() == 1) {
     Parser::Fragment frag = fragments[0];
@@ -572,11 +572,13 @@ int Shell::executeFragments(std::vector<Parser::Fragment> &fragments) {
     if(this->isFragmentBuiltin(frag)) {
       return this->executeBuiltin(frag);
     } else {
+      // system(raw.c_str());
       return this->executeSingle(frag);
     }
   }
   // otherwise, execute with piping
   else {
+    // system(raw.c_str());
     return this->executeFragmentsWithPipes(fragments);
   }
 
@@ -620,6 +622,6 @@ int Shell::executeCommandLine(std::string command) {
 #endif
 
   // execute command
-  err = this->executeFragments(fragments);
+  err = this->executeFragments(fragments, command);
   return err;
 }

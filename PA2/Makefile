@@ -1,5 +1,5 @@
 # name of the target binary
-TARGET_EXEC ?= kush
+TARGET_EXEC ?= shell
 
 # where the objects and source files go
 BUILD_DIR ?= ./build

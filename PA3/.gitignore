@@ -1,0 +1,6 @@
+# built binaries
+dataserver
+client
+
+# ignore debug symbol files
+*.dSYM

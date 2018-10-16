@@ -39,7 +39,7 @@ using namespace std;
  * Data type passed to the threads to populate the request buffer.
  */
 typedef struct {
-	/// buffer into which to insert data
+	/// buffer into which to insert requests
 	SafeBuffer *buf;
 
 	/// person for whom to get info
@@ -47,6 +47,19 @@ typedef struct {
 	/// how many requests to make
 	size_t numRequests;
 } buf_populate_ctx_t;
+
+/**
+ * Data type passed to the threads that process requests.
+ */
+typedef struct {
+    /// Histogram that is updated by data responses
+    Histogram *hist;
+	/// buffer from which to get requests
+	SafeBuffer *requests;
+
+    /// request channel to server
+    RequestChannel *channel;
+} worker_ctx_t;
 
 
 
@@ -62,6 +75,32 @@ void *PopulateThreadEntry(void *_ctx) {
     // push it N times
     for(size_t i = 0; i < ctx->numRequests; i++) {
         ctx->buf->push(command);
+    }
+
+    // done
+    return nullptr;
+}
+
+/**
+ * Entry point for the worker thread.
+ */
+void *WorkerThreadEntry(void *_ctx) {
+    worker_ctx_t *ctx = static_cast<worker_ctx_t *>(_ctx);
+
+    // handle the requests
+    while(true) {
+        std::string request = ctx->requests->pop();
+		ctx->channel->cwrite(request);
+
+		if(request == "quit") {
+            // TODO: problems if doing this on another thread?
+		   	delete ctx->channel;
+            break;
+        } else {
+            // handle the histogram
+			string response = ctx->channel->cread();
+			ctx->hist->update(request, response);
+		}
     }
 
     // done
@@ -86,7 +125,7 @@ int main(int argc, char * argv[]) {
                 n = atoi(optarg);
                 break;
             case 'w':
-                w = atoi(optarg); //This won't do a whole lot until you fill in the worker thread function
+                w = atoi(optarg);
                 break;
 			}
     }
@@ -104,7 +143,7 @@ int main(int argc, char * argv[]) {
     } else {
         // handle errors in fork
         if(server == -1) {
-            perror("fork(): ");
+            perror("fork: ");
             abort();
         }
     }
@@ -118,12 +157,18 @@ int main(int argc, char * argv[]) {
 	SafeBuffer request_buffer;
 	Histogram hist;
 
+
+
     // create the threads to push requests
     const size_t numPatients = 3;
     const std::string patients[numPatients] = {
         "John Smith", "Jane Smith", "Joe Smith"
     };
-    std::vector<pthread_t> populateThreads;
+
+    pthread_t populateThreads[numPatients];
+    buf_populate_ctx_t *populateThreadsCtx[numPatients];
+
+    memset(populateThreads, 0, sizeof(populateThreads));
 
     for(int i = 0; i < numPatients; i++) {
         // allocate context
@@ -133,6 +178,8 @@ int main(int argc, char * argv[]) {
         ctx->buf = &request_buffer;
         ctx->name = patients[i];
         ctx->numRequests = n;
+
+        populateThreadsCtx[i] = ctx;
 
         // create the thread
         pthread_t threadHandle;
@@ -145,12 +192,12 @@ int main(int argc, char * argv[]) {
         }
 
         // add it to the list
-        populateThreads.push_back(threadHandle);
+        populateThreads[i] = threadHandle;
     }
 
     // wait on the request buffers to be filled
-    for(int i = 0; i < populateThreads.size(); i++) {
-        // get the handle
+    for(int i = 0; i < numPatients; i++) {
+        // get the handle and wait for thread to join
         pthread_t handle = populateThreads[i];
 
         err = pthread_join(handle, nullptr);
@@ -159,6 +206,11 @@ int main(int argc, char * argv[]) {
             perror("pthread_join: ");
             abort();
         }
+
+        // delete that thread's context
+        buf_populate_ctx_t *ctx = populateThreadsCtx[i];
+
+        free(ctx);
     }
 
     cout << "Done populating request buffer" << endl;
@@ -170,24 +222,68 @@ int main(int argc, char * argv[]) {
     }
     cout << "done." << endl;
 
-    chan->cwrite("newchannel");
-	string s = chan->cread();
-    RequestChannel *workerChannel = new RequestChannel(s, RequestChannel::CLIENT_SIDE);
+    // create as many worker threads as needed
+    pthread_t workerThreads[w];
+    worker_ctx_t *workerThreadsCtx[w];
 
-    while(true) {
-        string request = request_buffer.pop();
-		workerChannel->cwrite(request);
+    memset(workerThreads, 0, sizeof(workerThreads));
 
-		if(request == "quit") {
-		   	delete workerChannel;
-            break;
-        }else{
-			string response = workerChannel->cread();
-			hist.update (request, response);
-		}
+    for(int i = 0; i < w; i++) {
+        // create a new request channel for ther worker
+        chan->cwrite("newchannel");
+    	string s = chan->cread();
+        RequestChannel *workerChannel = new RequestChannel(s, RequestChannel::CLIENT_SIDE);
+
+        // allocate context
+        worker_ctx_t *ctx = static_cast<worker_ctx_t *>(malloc(sizeof(worker_ctx_t)));
+        memset(ctx, 0, sizeof(worker_ctx_t));
+
+        ctx->hist = &hist;
+        ctx->requests = &request_buffer;
+        ctx->channel = workerChannel;
+
+        /// request channel to server
+        RequestChannel *channel;
+
+        workerThreadsCtx[i] = ctx;
+
+        // create the thread
+        pthread_t threadHandle;
+
+        err = pthread_create(&threadHandle, nullptr, WorkerThreadEntry, ctx);
+
+        if(err != 0) {
+            perror("pthread_create: ");
+            abort();
+        }
+
+        // add it to the list
+        workerThreads[i] = threadHandle;
     }
-    chan->cwrite ("quit");
+
+    // wait for workers to join
+    for(int i = 0; i < w; i++) {
+        // get the handle and wait for thread to join
+        pthread_t handle = workerThreads[i];
+
+        err = pthread_join(handle, nullptr);
+
+        if(err != 0) {
+            perror("pthread_join: ");
+            abort();
+        }
+
+        // delete that thread's context
+        worker_ctx_t *ctx = workerThreadsCtx[i];
+
+        free(ctx);
+    }
+
+    // quit server
+    chan->cwrite("quit");
     delete chan;
+
+    // print histogram machine
     cout << "All Done!!!" << endl;
 
 	hist.print();

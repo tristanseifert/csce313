@@ -87,21 +87,6 @@ void* handle_process_loop(void* _channel) {
  * of worker threads to spawn.
  */
 int main(int argc, char *argv[]) {
-	int workers = 1;
-
-	// parse args
-  int opt = 0;
-  while ((opt = getopt(argc, argv, "w:")) != -1) {
-      switch (opt) {
-          case 'w':
-              workers = atoi(optarg);
-              break;
-		}
-  }
-
-	// handle a single worker thread (do not spawn any more, XXX testing)
-	if(workers == 1) {
-		RequestChannel control_channel("control", RequestChannel::SERVER_SIDE);
-		handle_process_loop(&control_channel);
-	}
+	RequestChannel control_channel("control", RequestChannel::SERVER_SIDE);
+	handle_process_loop(&control_channel);
 }

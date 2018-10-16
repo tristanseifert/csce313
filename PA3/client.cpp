@@ -35,53 +35,46 @@
 #include "Histogram.h"
 using namespace std;
 
+/**
+ * Data type passed to the threads to populate the request buffer.
+ */
+typedef struct {
+	/// buffer into which to insert data
+	SafeBuffer *buf;
 
-void* request_thread_function(void* arg) {
-	/*
-		Fill in this function.
+	/// person for whom to get info
+	std::string name;
+	/// how many requests to make
+	size_t numRequests;
+} buf_populate_ctx_t;
 
-		The loop body should require only a single line of code.
-		The loop conditions should be somewhat intuitive.
 
-		In both thread functions, the arg parameter
-		will be used to pass parameters to the function.
-		One of the parameters for the request thread
-		function MUST be the name of the "patient" for whom
-		the data requests are being pushed: you MAY NOT
-		create 3 copies of this function, one for each "patient".
-	 */
 
-	for(;;) {
+/**
+ * Entry point for the request thread.
+ */
+void *PopulateThreadEntry(void *_ctx) {
+    buf_populate_ctx_t *ctx = static_cast<buf_populate_ctx_t *>(_ctx);
 
-	}
-}
+    // create the command to push
+    std::string command = "data " + ctx->name;
 
-void* worker_thread_function(void* arg) {
-    /*
-		Fill in this function. 
-
-		Make sure it terminates only when, and not before,
-		all the requests have been processed.
-
-		Each thread must have its own dedicated
-		RequestChannel. Make sure that if you
-		construct a RequestChannel (or any object)
-		using "new" that you "delete" it properly,
-		and that you send a "quit" request for every
-		RequestChannel you construct regardless of
-		whether you used "new" for it.
-     */
-
-    while(true) {
-
+    // push it N times
+    for(size_t i = 0; i < ctx->numRequests; i++) {
+        ctx->buf->push(command);
     }
+
+    // done
+    return nullptr;
 }
+
+
 
 /*--------------------------------------------------------------------------*/
 /* MAIN FUNCTION */
 /*--------------------------------------------------------------------------*/
-
 int main(int argc, char * argv[]) {
+    int err;
     int n = 100; //default number of requests per "patient"
     int w = 1; //default number of worker threads
     int opt = 0;
@@ -96,57 +89,94 @@ int main(int argc, char * argv[]) {
 			}
     }
 
-    int pid = fork();
-	if (pid == 0){
-		execl("dataserver", (char*) NULL);
-	}
-	else {
+    // remove fork() lol
 
-        cout << "n == " << n << endl;
-        cout << "w == " << w << endl;
+    cout << "n == " << n << endl;
+    cout << "w == " << w << endl;
 
-        cout << "CLIENT STARTED:" << endl;
-        cout << "Establishing control channel... " << flush;
-        RequestChannel *chan = new RequestChannel("control", RequestChannel::CLIENT_SIDE);
-        cout << "done." << endl<< flush;
+    cout << "CLIENT STARTED:" << endl;
 
-		SafeBuffer request_buffer;
-		Histogram hist;
+    // this is the buffer and histogram used by everything
+	SafeBuffer request_buffer;
+	Histogram hist;
 
-        for(int i = 0; i < n; ++i) {
-            request_buffer.push("data John Smith");
-            request_buffer.push("data Jane Smith");
-            request_buffer.push("data Joe Smith");
+    // create the threads to push requests
+    const size_t numPatients = 3;
+    const std::string patients[numPatients] = {
+        "John Smith", "Jane Smith", "Joe Smith"
+    };
+    std::vector<pthread_t> populateThreads;
+
+    for(int i = 0; i < numPatients; i++) {
+        // allocate context
+        buf_populate_ctx_t *ctx = static_cast<buf_populate_ctx_t *>(malloc(sizeof(buf_populate_ctx_t)));
+        memset(ctx, 0, sizeof(buf_populate_ctx_t));
+
+        ctx->buf = &request_buffer;
+        ctx->name = patients[i];
+        ctx->numRequests = n;
+
+        // create the thread
+        pthread_t threadHandle;
+
+        err = pthread_create(&threadHandle, nullptr, PopulateThreadEntry, ctx);
+
+        if(err != 0) {
+            perror("pthread_create: ");
+            abort();
         }
-        cout << "Done populating request buffer" << endl;
 
-        cout << "Pushing quit requests... ";
-        for(int i = 0; i < w; ++i) {
-            request_buffer.push("quit");
-        }
-        cout << "done." << endl;
-
-	
-        chan->cwrite("newchannel");
-		string s = chan->cread ();
-        RequestChannel *workerChannel = new RequestChannel(s, RequestChannel::CLIENT_SIDE);
-
-        while(true) {
-            string request = request_buffer.pop();
-			workerChannel->cwrite(request);
-
-			if(request == "quit") {
-			   	delete workerChannel;
-                break;
-            }else{
-				string response = workerChannel->cread();
-				hist.update (request, response);
-			}
-        }
-        chan->cwrite ("quit");
-        delete chan;
-        cout << "All Done!!!" << endl; 
-
-		hist.print ();
+        // add it to the list
+        populateThreads.push_back(threadHandle);
     }
+
+    // wait on the request buffers to be filled
+    for(int i = 0; i < populateThreads.size(); i++) {
+        // get the handle
+        pthread_t handle = populateThreads[i];
+
+        err = pthread_join(handle, nullptr);
+
+        if(err != 0) {
+            perror("pthread_join: ");
+            abort();
+        }
+    }
+
+    cout << "Done populating request buffer" << endl;
+
+    // add quit requests for each worker thread
+    cout << "Pushing quit requests... ";
+    for(int i = 0; i < w; ++i) {
+        request_buffer.push("quit");
+    }
+    cout << "done." << endl;
+
+
+    // set up the channel(s)
+/*    cout << "Establishing control channel... " << flush;
+    RequestChannel *chan = new RequestChannel("control", RequestChannel::CLIENT_SIDE);
+    cout << "done." << endl<< flush;
+
+    chan->cwrite("newchannel");
+	string s = chan->cread ();
+    RequestChannel *workerChannel = new RequestChannel(s, RequestChannel::CLIENT_SIDE);
+
+    while(true) {
+        string request = request_buffer.pop();
+		workerChannel->cwrite(request);
+
+		if(request == "quit") {
+		   	delete workerChannel;
+            break;
+        }else{
+			string response = workerChannel->cread();
+			hist.update (request, response);
+		}
+    }
+    chan->cwrite ("quit");
+    delete chan;*/
+    cout << "All Done!!!" << endl;
+
+	hist.print();
 }

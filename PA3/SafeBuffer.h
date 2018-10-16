@@ -1,20 +1,23 @@
 #ifndef SafeBuffer_h
 #define SafeBuffer_h
 
-#include <stdio.h>
+#include <mutex>
 #include <queue>
 #include <string>
-using namespace std;
 
 class SafeBuffer {
-private:
-	queue<string> q;	
-public:
-    SafeBuffer();
-	~SafeBuffer();
-	int size();
-    void push (string str);
-    string pop();
+	public:
+		SafeBuffer();
+		~SafeBuffer();
+
+	public:
+		int size();
+		void push(std::string str);
+		std::string pop();
+
+	private:
+		std::mutex lock;
+		std::queue<std::string> q;
 };
 
 #endif /* SafeBuffer_ */

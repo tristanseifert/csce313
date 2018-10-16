@@ -1,38 +1,43 @@
 #include "SafeBuffer.h"
+
+#include <mutex>
 #include <string>
 #include <queue>
-using namespace std;
 
 SafeBuffer::SafeBuffer() {
-	
+
 }
 
 SafeBuffer::~SafeBuffer() {
-	
+
 }
 
 int SafeBuffer::size() {
-	/*
-	Is this function thread-safe???
-	Make necessary modifications to make it thread-safe
-	*/
-    return q.size();
+	// get size with lock guard
+	{
+		std::lock_guard<std::mutex> guard(this->lock);
+    return this->q.size();
+	}
 }
 
-void SafeBuffer::push(string str) {
-	/*
-	Is this function thread-safe???
-	Make necessary modifications to make it thread-safe
-	*/
-	q.push (str);
+void SafeBuffer::push(std::string str) {
+	// perform push with a lock guard
+	{
+		std::lock_guard<std::mutex> guard(this->lock);
+		this->q.push(str);
+	}
 }
 
-string SafeBuffer::pop() {
-	/*
-	Is this function thread-safe???
-	Make necessary modifications to make it thread-safe
-	*/
-	string s = q.front();
-	q.pop();
+std::string SafeBuffer::pop() {
+	std::string s;
+
+	// pop the head of the element with a lock guard
+	{
+		std::lock_guard<std::mutex> guard(this->lock);
+
+		s = q.front();
+		q.pop();
+	}
+
 	return s;
 }

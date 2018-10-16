@@ -28,7 +28,7 @@ void process_newchannel(RequestChannel* _channel) {
 	if (pthread_create(& thread_id, NULL, handle_process_loop, data_channel) < 0 ) {
 		EXITONERROR ("");
 	}
-	
+
 }
 
 void process_request(RequestChannel* _channel, string _request) {
@@ -38,7 +38,7 @@ void process_request(RequestChannel* _channel, string _request) {
 	}
 	else if (_request.compare(0, 4, "data") == 0) {
 		usleep(1000 + (rand() % 5000));
-		_channel->cwrite(to_string(rand() % 100));	
+		_channel->cwrite(to_string(rand() % 100));
 	}
 	else if (_request.compare(0, 10, "newchannel") == 0) {
 		process_newchannel(_channel);
@@ -68,6 +68,5 @@ void* handle_process_loop (void* _channel) {
 int main(int argc, char * argv[]) {
 	newchannel_lock = PTHREAD_MUTEX_INITIALIZER;
 	RequestChannel control_channel("control", RequestChannel::SERVER_SIDE);
-	handle_process_loop (&control_channel);	
+	handle_process_loop (&control_channel);
 }
-

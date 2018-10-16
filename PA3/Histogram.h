@@ -1,21 +1,24 @@
 #ifndef Histogram_h
 #define Histogram_h
 
-#include <queue>
 #include <string>
 #include <vector>
 #include <unordered_map>
-using namespace std;
+#include <mutex>
 
 class Histogram {
-private:
-	int hist [3][10];					// histogram for each person with 10 bins each
-	unordered_map<string, int> map;  	// person name to index mapping
-	vector<string> names; 				// names of the 3 persons
-public:
-    Histogram();
-	void update (string, string); 		// updates the histogram
-    void print();						// prints the histogram
+	public:
+		Histogram();
+		void update(std::string, std::string); 		// updates the histogram
+		void print();						// prints the histogram
+
+	private:
+		int hist [3][10];					// histogram for each person with 10 bins each
+		std::unordered_map<std::string, int> map;  	// person name to index mapping
+		std::vector<std::string> names; 				// names of the 3 persons
+
+		/// used as a 'giant' lock for any of the private members
+		std::mutex lock;
 };
 
-#endif 
+#endif

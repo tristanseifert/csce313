@@ -77,6 +77,8 @@ int main(int argc, char * argv[]) {
     int err;
     int n = 100; //default number of requests per "patient"
     int w = 1; //default number of worker threads
+
+    // parse arguments
     int opt = 0;
     while ((opt = getopt(argc, argv, "n:w:")) != -1) {
         switch (opt) {
@@ -89,12 +91,28 @@ int main(int argc, char * argv[]) {
 			}
     }
 
-    // remove fork() lol
-
     cout << "n == " << n << endl;
     cout << "w == " << w << endl;
 
     cout << "CLIENT STARTED:" << endl;
+
+    // spawn server
+    pid_t server = fork();
+
+    if(server == 0) {
+        execl("dataserver", (char *) nullptr);
+    } else {
+        // handle errors in fork
+        if(server == -1) {
+            perror("fork(): ");
+            abort();
+        }
+    }
+
+    // set up the channel(s) to server
+    cout << "Establishing control channel... " << flush;
+    RequestChannel *chan = new RequestChannel("control", RequestChannel::CLIENT_SIDE);
+    cout << "done." << endl << flush;
 
     // this is the buffer and histogram used by everything
 	SafeBuffer request_buffer;
@@ -152,14 +170,8 @@ int main(int argc, char * argv[]) {
     }
     cout << "done." << endl;
 
-
-    // set up the channel(s)
-/*    cout << "Establishing control channel... " << flush;
-    RequestChannel *chan = new RequestChannel("control", RequestChannel::CLIENT_SIDE);
-    cout << "done." << endl<< flush;
-
     chan->cwrite("newchannel");
-	string s = chan->cread ();
+	string s = chan->cread();
     RequestChannel *workerChannel = new RequestChannel(s, RequestChannel::CLIENT_SIDE);
 
     while(true) {
@@ -175,7 +187,7 @@ int main(int argc, char * argv[]) {
 		}
     }
     chan->cwrite ("quit");
-    delete chan;*/
+    delete chan;
     cout << "All Done!!!" << endl;
 
 	hist.print();

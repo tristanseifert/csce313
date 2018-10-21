@@ -1,0 +1,143 @@
+\documentclass[10pt]{article}
+\usepackage[margin=.7in]{geometry}
+\usepackage[T1]{fontenc}
+%\usepackage{amsmath,amssymb,amsthm}
+%\usepackage{enumerate}
+%\usepackage{minibox}
+%\usepackage[table]{xcolor}
+
+\usepackage{csvsimple}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{pgfplots}
+
+\usepackage{underscore}
+
+\pgfplotsset{width=12cm,compat=1.3}
+
+% \def\code#1{\texttt{#1}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\title{CSCE 313.506-F18: \\Programming Assignment 3}
+\author{Tristan Seifert}
+\date{Due: Sunday, Oct. 21, 2018}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+\maketitle
+
+\hrule
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Overview}
+The major change in this code was to use threads to first populate the \texttt{SafeBuffer} with requests, then spawn a user-defined number of threads to pop requests off of the buffer and send them to the server through a \texttt{RequestChannel}. The main thread creates a channel for each thread, then spawns the thread with a reference to that channel, so it can easily detect if the system has run out of file descriptors and continue with the already spawned threads instead of failing spectacularly.
+
+Additionally, both the \texttt{SafeBuffer} and \texttt{RequestChannel} classes were made threadsafe by adding a \texttt{std::mutex} that protects access to the inner data structures, using a \texttt{std::lock_guard} to ensure the lock is unlocked when the function returns, or the guard goes out of scope.
+
+Code for the \texttt{dataserver} was not modified, since it already spawns a new thread for every new request channel created, and processes data that way.
+
+\section{Performance Data}
+This data was gathered for varying values of $w$ while $n = 10000$. The system used runs macOS 10.14.1 beta 2, with 64GB of RAM and dual Xeon E5-2670 v2 processors at 2.6 GHz.
+
+A maximum of approximately 2000 threads are possible until the file descriptor limit of 4096 was reached. If the program reaches this, calls to create a new channel return with \texttt{EMFILE}; the program prints the message \texttt{Too many open files} and attempts to continue with the threads that have already been spawned.
+
+\begin{figure}[h]
+\centering
+\resizebox{\linewidth}{8.5cm}{
+\begin{tikzpicture}[scale=1.2, transform shape]
+\pgfplotsset{
+    scale only axis,
+}
+
+	\begin{axis}[
+  axis y line*=left,
+		xlabel={Number of Threads ($w$)},
+		ylabel=Time (seconds),
+		xmode=log,
+		%log basis y=10
+	]
+	\addplot[color=red,smooth,mark=o] coordinates {
+	(5,0.61021)
+	(10,0.52660)
+	(15,0.53936)
+	(25,0.53292)
+	(35,0.54966)
+	(45,0.54700)
+	(55,0.55604)
+	(65,0.56522)
+	(75,0.56987)
+	(85,0.57369)
+	(95,0.57813)
+	(105,0.59868)
+	(115,0.59724)
+	(125,0.64959)
+	(135,0.60645)
+	(145,0.63296)
+	(155,0.61032)
+	(165,0.60435)
+	(175,0.63245)
+	(185,0.62049)
+	(200,0.64660)
+	(250,0.70069)
+	(300,0.68557)
+	(400,0.74335)
+	(500,0.79003)
+	(600,0.88296)
+	(700,0.92002)
+	(800,0.95256)
+	(900,1.02058)
+	(1000,1.10259)
+	(1500,1.26794)
+	(2000,1.44296)
+	};
+	\end{axis}
+	
+\end{tikzpicture}
+}
+\caption{Runtimes for $n = 10000$}
+\end{figure}
+
+The ideal number of worker threads is around 20-25, which roughly corresponds to one thread for every CPU core on my machine. This way, threads aren't competing for CPU time, and instead can all be scheduled simultaneously. If the threads were more IO heavy, it would make sense to increase this number so other threads could get started on their work, while others are waiting for IO to complete.
+
+\begin{table}[h]
+\begin{tabular}{c|c}
+\textbf{Threads} & \textbf{Time (sec)} \\ \hline
+5 & 0.61021 \\
+10 & 0.52660 \\
+15 & 0.53936 \\
+25 & 0.53292 \\
+35 & 0.54966 \\
+45 & 0.54700 \\
+55 & 0.55604 \\
+65 & 0.56522 \\
+75 & 0.56987 \\
+85 & 0.57369 \\
+95 & 0.57813 \\
+105 & 0.59868 \\
+115 & 0.59724 \\
+125 & 0.64959 \\
+135 & 0.60645 \\
+145 & 0.63296 \\
+155 & 0.61032 \\
+165 & 0.60435 \\
+175 & 0.63245 \\
+185 & 0.62049 \\
+200 & 0.64660 \\
+250 & 0.70069 \\
+300 & 0.68557 \\
+400 & 0.74335 \\
+500 & 0.79003 \\
+600 & 0.88296 \\
+700 & 0.92002 \\
+800 & 0.95256 \\
+900 & 1.02058 \\
+1000 & 1.10259 \\
+1500 & 1.26794 \\
+2000 & 1.44296 \\
+2500 & ERR
+\end{tabular}
+\end{table}
+
+Compared to the original program, even just having three worker threads provides a significant improvement. For $n = 10000$, the original program took approximately 15 seconds. The sizeable improvement in performance stems from using threads to populate the buffer, as well as using multiple threads to process requests.
+
+\end{document}

@@ -1,3 +1,7 @@
+# ignore FIFO files
+fifo_control*
+fifo_data*
+
 # built binaries
 dataserver
 client

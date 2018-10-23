@@ -238,6 +238,11 @@ int main(int argc, char * argv[]) {
   		string s = chan->cread();
       RequestChannel *workerChannel = new RequestChannel(s, RequestChannel::CLIENT_SIDE);
 
+      // exit if the worker channel is null
+			if(workerChannel == nullptr) {
+				break;
+			}
+
       // allocate context
       worker_ctx_t *ctx = static_cast<worker_ctx_t *>(malloc(sizeof(worker_ctx_t)));
       memset(ctx, 0, sizeof(worker_ctx_t));

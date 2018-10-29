@@ -1,3 +1,6 @@
+# submission tarballs
+/PA*.tar.bz*
+
 # Ignore Finder garbage
 .DS_Store
 

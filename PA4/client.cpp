@@ -77,6 +77,9 @@ void *RequestThreadEntry(void *_ctx) {
       ctx->buf->push(command);
   }
 
+  // also, push a quit command
+  ctx->buf->push("quit");
+
   // done
   return nullptr;
 }
@@ -175,7 +178,7 @@ int main(int argc, char * argv[]) {
 
     int n = 100; //default number of requests per "patient"
     int w = 1; //default number of worker threads
-    int b = 3 * n; // default capacity of the request buffer, you should change this default
+    int b = -1;
 
     // parse arguments
     int opt = 0;
@@ -191,6 +194,11 @@ int main(int argc, char * argv[]) {
           b = atoi (optarg);
           break;
       }
+    }
+
+    // if b is still the default, set default n*3
+    if(b == -1) {
+      b = n * 3;
     }
 
     cout << "n == " << n << endl;
@@ -210,7 +218,7 @@ int main(int argc, char * argv[]) {
     } else {
         // handle errors in fork
         if(server == -1) {
-            perror("fork: ");
+            perror("fork");
             abort();
         }
     }
@@ -232,10 +240,11 @@ int main(int argc, char * argv[]) {
         "John Smith", "Jane Smith", "Joe Smith"
     };
 
-    pthread_t populateThreads[numPatients];
-    buf_populate_ctx_t *populateThreadsCtx[numPatients];
+    pthread_t requestThreads[numPatients];
+    buf_populate_ctx_t *requestThreadsCtx[numPatients];
 
-    memset(populateThreads, 0, sizeof(populateThreads));
+    memset(requestThreads, 0, sizeof(requestThreads));
+    memset(requestThreadsCtx, 0, sizeof(requestThreadsCtx));
 
     for(int i = 0; i < numPatients; i++) {
         // allocate context
@@ -246,7 +255,7 @@ int main(int argc, char * argv[]) {
         ctx->name = patients[i];
         ctx->numRequests = n;
 
-        populateThreadsCtx[i] = ctx;
+        requestThreadsCtx[i] = ctx;
 
         // create the thread
         pthread_t threadHandle;
@@ -254,49 +263,25 @@ int main(int argc, char * argv[]) {
         err = pthread_create(&threadHandle, nullptr, RequestThreadEntry, ctx);
 
         if(err != 0) {
-            perror("pthread_create: ");
+            perror("pthread_create - request");
             abort();
         }
 
         // add it to the list
-        populateThreads[i] = threadHandle;
+        requestThreads[i] = threadHandle;
     }
 
-    // wait on the request buffers to be filled
-    for(int i = 0; i < numPatients; i++) {
-        // get the handle and wait for thread to join
-        pthread_t handle = populateThreads[i];
-
-        err = pthread_join(handle, nullptr);
-
-        if(err != 0) {
-            perror("pthread_join: ");
-            abort();
-        }
-
-        // delete that thread's context
-        buf_populate_ctx_t *ctx = populateThreadsCtx[i];
-
-        free(ctx);
-    }
-
-    cout << "Done populating request buffer" << endl;
-
-    // add quit requests for each worker thread
-    cout << "Pushing quit requests... ";
-    for(int i = 0; i < w; ++i) {
-        requestBuffer.push("quit");
-    }
-    cout << "done." << endl;
+    cout << "Done spawning request threads" << endl;
 
     // create as many worker threads as needed
     pthread_t workerThreads[w];
     worker_ctx_t *workerThreadsCtx[w];
 
     memset(workerThreads, 0, sizeof(workerThreads));
+    memset(workerThreadsCtx, 0, sizeof(workerThreadsCtx));
 
     for(int i = 0; i < w; i++) {
-        // create a new request channel for ther worker
+        // create a new request channel for the worker
         chan->cwrite("newchannel");
     		string s = chan->cread();
         RequestChannel *workerChannel = new RequestChannel(s, RequestChannel::CLIENT_SIDE);
@@ -325,12 +310,34 @@ int main(int argc, char * argv[]) {
         err = pthread_create(&threadHandle, nullptr, WorkerThreadEntry, ctx);
 
         if(err != 0) {
-            perror("pthread_create: ");
+            perror("pthread_create - worker");
             abort();
         }
 
         // add it to the list
         workerThreads[i] = threadHandle;
+    }
+
+    std::cout << "Done spawning worker threads" << std::endl;
+
+
+
+    // wait for request threads to join
+    for(int i = 0; i < numPatients; i++) {
+        // get the handle and wait for thread to join
+        pthread_t handle = requestThreads[i];
+
+        err = pthread_join(handle, nullptr);
+
+        if(err != 0) {
+            perror("pthread_join - request threads");
+            abort();
+        }
+
+        // delete that thread's context
+        buf_populate_ctx_t *ctx = requestThreadsCtx[i];
+
+        free(ctx);
     }
 
     // wait for workers to join
@@ -341,7 +348,7 @@ int main(int argc, char * argv[]) {
         err = pthread_join(handle, nullptr);
 
         if(err != 0) {
-            perror("pthread_join: ");
+            perror("pthread_join - worker threads");
             abort();
         }
 

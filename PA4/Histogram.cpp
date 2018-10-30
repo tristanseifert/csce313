@@ -167,4 +167,5 @@ void Histogram::waitForCompletion(void) {
   }
 
   // we're good
+  this->unlockHistogram();
 }

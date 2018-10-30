@@ -167,7 +167,7 @@ void *StatsThreadEntry(void *_ctx) {
       // << " (need " << ctx->numResponses << ")" << std::endl;
 
     if(responses == ctx->numResponses) {
-      std::cout << "Finished histogram for " << histogramKey << std::endl;
+      // std::cout << "Finished histogram for " << histogramKey << std::endl;
       break;
     }
   }

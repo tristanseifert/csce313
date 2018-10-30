@@ -1,7 +1,7 @@
 #ifndef BoundedBuffer_h
 #define BoundedBuffer_h
 
-#include <stdio.h>
+#include <iostream>
 #include <queue>
 #include <string>
 
@@ -36,7 +36,8 @@ class BoundedBuffer {
     inline void lockQueue(void) {
       int err = pthread_mutex_lock(&this->queueLock);
       if(err != 0) {
-        perror("pthread_mutex_lock");
+        // perror("pthread_mutex_lock");
+        std::cout << "pthread_mutex_lock: " << err << std::endl;
       }
     }
 
@@ -46,7 +47,8 @@ class BoundedBuffer {
     inline void unlockQueue(void) {
       int err = pthread_mutex_unlock(&this->queueLock);
       if(err != 0) {
-        perror("pthread_mutex_unlock");
+        // perror("pthread_mutex_unlock");
+        std::cout << "pthread_mutex_unlock: " << err << std::endl;
       }
     }
 };

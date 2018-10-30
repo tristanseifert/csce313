@@ -52,14 +52,28 @@ typedef struct {
  * Data type passed to the threads that process requests.
  */
 typedef struct {
-  /// Histogram that is updated by data responses
-  Histogram *hist;
 	/// buffer from which to get requests
 	BoundedBuffer *requests;
 
   /// request channel to server
   RequestChannel *channel;
+
+  /// output buffer list
+  BoundedBuffer **outBuffers;
 } worker_ctx_t;
+
+/**
+ * Data type passed to the stats threads.
+ */
+typedef struct {
+  /// Histogram to modify
+  Histogram *hist;
+  /// Bounded buffer from which data is read
+  BoundedBuffer *dataBuffer;
+
+  /// name of the patient
+  std::string name;
+} stats_ctx_t;
 
 
 
@@ -84,30 +98,17 @@ void *RequestThreadEntry(void *_ctx) {
   return nullptr;
 }
 
-void* request_thread_function(void* arg) {
-	/*
-		Fill in this function.
-
-		The loop body should require only a single line of code.
-		The loop conditions should be somewhat intuitive.
-
-		In both thread functions, the arg parameter
-		will be used to pass parameters to the function.
-		One of the parameters for the request thread
-		function MUST be the name of the "patient" for whom
-		the data requests are being pushed: you MAY NOT
-		create 3 copies of this function, one for each "patient".
-	 */
-
-	for(;;) {
-
-	}
-}
-
 /**
  * Entry point for the worker thread.
  */
 void *WorkerThreadEntry(void *_ctx) {
+  // which buffer index is for which requests
+  // XXX: this sucks ass and will break if we add more patients
+  const std::size_t outBufferMapLen = 3;
+  const std::string outBufferMap[outBufferMapLen] = {
+    "data John Smith", "data Jane Smith", "data Joe Smith"
+  };
+
   worker_ctx_t *ctx = static_cast<worker_ctx_t *>(_ctx);
 
   // handle the requests
@@ -116,13 +117,20 @@ void *WorkerThreadEntry(void *_ctx) {
 		ctx->channel->cwrite(request);
 
 		if(request == "quit") {
-      // TODO: problems if doing this on another thread?
 	   	delete ctx->channel;
       break;
     } else {
-      // handle the histogram
-			string response = ctx->channel->cread();
-			ctx->hist->update(request, response);
+      string response = ctx->channel->cread();
+
+      // figure out which index buffer the response goes into
+      for(int i = 0; i < outBufferMapLen; i++) {
+        // does the name match?
+        if(request == outBufferMap[i]) {
+          // if so, copy the response into that buffer
+          ctx->outBuffers[i]->push(response);
+          break;
+        }
+      }
 		}
   }
 
@@ -130,42 +138,22 @@ void *WorkerThreadEntry(void *_ctx) {
   return nullptr;
 }
 
-void* worker_thread_function(void* arg) {
-    /*
-		Fill in this function.
+/**
+ * Adds data for a particular patient to the histogram.
+ */
+void *StatsThreadEntry(void *_ctx) {
+  stats_ctx_t *ctx = static_cast<stats_ctx_t *>(_ctx);
 
-		Make sure it terminates only when, and not before,
-		all the requests have been processed.
+  // continuously consume data from the buffer
+  while(true) {
+    std::string data = ctx->dataBuffer->pop();
 
-		Each thread must have its own dedicated
-		RequestChannel. Make sure that if you
-		construct a RequestChannel (or any object)
-		using "new" that you "delete" it properly,
-		and that you send a "quit" request for every
-		RequestChannel you construct regardless of
-		whether you used "new" for it.
-     */
+    std::string key = "data " + ctx->name;
+    ctx->hist->update(key, data);
+  }
 
-    while(true) {
-
-    }
-}
-
-
-void* stat_thread_function(void* arg) {
-    /*
-		Fill in this function.
-
-		There should 1 such thread for each person. Each stat thread
-        must consume from the respective statistics buffer and update
-        the histogram. Since a thread only works on its own part of
-        histogram, does the Histogram class need to be thread-safe????
-
-     */
-
-    for(;;) {
-
-    }
+  // done
+  return nullptr;
 }
 
 
@@ -273,6 +261,45 @@ int main(int argc, char * argv[]) {
 
     cout << "Done spawning request threads" << endl;
 
+    // create a stats thread for each of the patients
+    pthread_t statsThreads[numPatients];
+    stats_ctx_t *statsThreadsCtx[numPatients];
+    BoundedBuffer *outBuffers[numPatients];
+
+    memset(statsThreads, 0, sizeof(statsThreads));
+    memset(statsThreadsCtx, 0, sizeof(statsThreadsCtx));
+    memset(outBuffers, 0, sizeof(outBuffers));
+
+    for(int i = 0; i < numPatients; i++) {
+      // allocate an output buffer for this queue
+      outBuffers[i] = new BoundedBuffer((b / 3));
+
+      // allocate context
+      stats_ctx_t *ctx = static_cast<stats_ctx_t *>(malloc(sizeof(stats_ctx_t)));
+      memset(ctx, 0, sizeof(stats_ctx_t));
+
+      ctx->hist = &hist;
+      ctx->name = patients[i];
+      ctx->dataBuffer = outBuffers[i];
+
+      statsThreadsCtx[i] = ctx;
+
+      // create the thread
+      pthread_t threadHandle;
+
+      err = pthread_create(&threadHandle, nullptr, StatsThreadEntry, ctx);
+
+      if(err != 0) {
+          perror("pthread_create - stats");
+          abort();
+      }
+
+      // add it to the list
+      statsThreads[i] = threadHandle;
+    }
+
+    cout << "Done spawning stats threads" << endl;
+
     // create as many worker threads as needed
     pthread_t workerThreads[w];
     worker_ctx_t *workerThreadsCtx[w];
@@ -295,13 +322,12 @@ int main(int argc, char * argv[]) {
         worker_ctx_t *ctx = static_cast<worker_ctx_t *>(malloc(sizeof(worker_ctx_t)));
         memset(ctx, 0, sizeof(worker_ctx_t));
 
-        ctx->hist = &hist;
+        // ctx->outBuffers = &outBuffers;
+        ctx->outBuffers = reinterpret_cast<BoundedBuffer **>(&outBuffers);
         ctx->requests = &requestBuffer;
         ctx->channel = workerChannel;
 
         /// request channel to server
-        RequestChannel *channel;
-
         workerThreadsCtx[i] = ctx;
 
         // create the thread
@@ -336,7 +362,6 @@ int main(int argc, char * argv[]) {
 
         // delete that thread's context
         buf_populate_ctx_t *ctx = requestThreadsCtx[i];
-
         free(ctx);
     }
 
@@ -354,13 +379,15 @@ int main(int argc, char * argv[]) {
 
         // delete that thread's context
         worker_ctx_t *ctx = workerThreadsCtx[i];
-
         free(ctx);
     }
 
     // quit server
     chan->cwrite("quit");
     delete chan;
+
+    // wait for stats threads to be done
+    // TODO: implement
 
     // calculate difference
     time_t timeEnd = clock();
@@ -372,4 +399,25 @@ int main(int argc, char * argv[]) {
     cout << "All Done!!!" << endl;
 
   	hist.print();
+
+    // delete resources used by the stats threads
+    for(int i = 0; i < numPatients; i++) {
+        // get the handle and wait for thread to join
+        pthread_t handle = statsThreads[i];
+
+        // err = pthread_join(handle, nullptr);
+        err = pthread_cancel(handle);
+
+        if(err != 0) {
+            perror("pthread_join - stats threads");
+            abort();
+        }
+
+        // delete that thread's context and buffer
+        stats_ctx_t *ctx = statsThreadsCtx[i];
+        free(ctx);
+
+        // XXX: this sometimes gives errors, we technically leak memory now
+        // delete outBuffers[i];
+    }
 }

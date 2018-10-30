@@ -1,5 +1,6 @@
 #include "BoundedBuffer.h"
 
+#include <iostream>
 #include <string>
 #include <queue>
 
@@ -15,21 +16,24 @@ BoundedBuffer::BoundedBuffer(int _cap) : maxCapacity(_cap) {
   err = pthread_mutex_init(&this->queueLock, nullptr);
 
   if(err != 0) {
-    perror("pthread_mutex_init");
+    // perror("pthread_mutex_init");
+    std::cout << "pthread_mutex_init: " << err << std::endl;
   }
 
   // allocate "queue not full" condition
   err = pthread_cond_init(&this->queueNotFull, nullptr);
 
   if(err != 0) {
-    perror("pthread_cond_init - queueNotFull");
+    // perror("pthread_cond_init - queueNotFull");
+    std::cout << "pthread_cond_init - queueNotFull: " << err << std::endl;
   }
 
   // allocate "queue not empty" condition
   err = pthread_cond_init(&this->queueNotEmpty, nullptr);
 
   if(err != 0) {
-    perror("pthread_cond_init - queueNotEmpty");
+    // perror("pthread_cond_init - queueNotEmpty");
+    std::cout << "pthread_cond_init - queueNotEmpty: " << err << std::endl;
   }
 }
 
@@ -39,25 +43,28 @@ BoundedBuffer::BoundedBuffer(int _cap) : maxCapacity(_cap) {
 BoundedBuffer::~BoundedBuffer() {
   int err;
 
-  // destroy the queue mutex
-  err = pthread_mutex_destroy(&this->queueLock);
-
-  if(err != 0) {
-    perror("pthread_mutex_destroy");
-  }
-
   // destroy "queue not full" condition
   err = pthread_cond_destroy(&this->queueNotFull);
 
   if(err != 0) {
-    perror("pthread_cond_destroy - queueNotFull");
+    // perror("pthread_cond_destroy - queueNotFull");
+    std::cout << "pthread_cond_destroy - queueNotFull: " << err << std::endl;
   }
 
   // destroy "queue not empty" condition
   err = pthread_cond_destroy(&this->queueNotEmpty);
 
   if(err != 0) {
-    perror("pthread_cond_destroy - queueNotEmpty");
+    // perror("pthread_cond_destroy - queueNotEmpty");
+    std::cout << "pthread_cond_destroy - queueNotEmpty: " << err << std::endl;
+  }
+
+  // destroy the queue mutex last (prevents EBUSY)
+  err = pthread_mutex_destroy(&this->queueLock);
+
+  if(err != 0) {
+    // perror("pthread_mutex_destroy");
+    std::cout << "pthread_mutex_destroy: " << err << std::endl;
   }
 }
 
@@ -131,7 +138,7 @@ std::string BoundedBuffer::pop() {
     err = pthread_cond_wait(&this->queueNotEmpty, &this->queueLock);
 
     if(err != 0) {
-      perror("pthread_cond_wait - queueNotEmpty");
+      std::cout << "pthread_cond_wait - queueNotFull: " << err << std::endl;
     }
   }
 

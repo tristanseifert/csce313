@@ -59,7 +59,7 @@ typedef struct {
   RequestChannel *channel;
 
   /// output buffer list
-  BoundedBuffer **outBuffers;
+  BoundedBuffer **statBuffers;
 } worker_ctx_t;
 
 /**
@@ -69,10 +69,12 @@ typedef struct {
   /// Histogram to modify
   Histogram *hist;
   /// Bounded buffer from which data is read
-  BoundedBuffer *dataBuffer;
+  BoundedBuffer *statBuffer;
 
   /// name of the patient
   std::string name;
+  /// how many pieces of data we need before histogram is complete
+  int numResponses;
 } stats_ctx_t;
 
 
@@ -92,7 +94,7 @@ void *RequestThreadEntry(void *_ctx) {
   }
 
   // also, push a quit command
-  ctx->buf->push("quit");
+  // ctx->buf->push("quit");
 
   // done
   return nullptr;
@@ -127,11 +129,14 @@ void *WorkerThreadEntry(void *_ctx) {
         // does the name match?
         if(request == outBufferMap[i]) {
           // if so, copy the response into that buffer
-          ctx->outBuffers[i]->push(response);
+          ctx->statBuffers[i]->push(response);
           break;
         }
       }
 		}
+
+    // print info
+    // std::cout << "Have " << ctx->requests->size() << " requests " << std::endl;
   }
 
   // done
@@ -143,14 +148,32 @@ void *WorkerThreadEntry(void *_ctx) {
  */
 void *StatsThreadEntry(void *_ctx) {
   stats_ctx_t *ctx = static_cast<stats_ctx_t *>(_ctx);
+  std::string histogramKey = "data " + ctx->name;
+
+  // count the number of responses we've gotten
+  int responses = 0;
 
   // continuously consume data from the buffer
   while(true) {
-    std::string data = ctx->dataBuffer->pop();
+    // get data out of the buffer and update the histogram
+    std::string data = ctx->statBuffer->pop();
 
-    std::string key = "data " + ctx->name;
-    ctx->hist->update(key, data);
+    ctx->hist->update(histogramKey, data);
+
+    // is this enough data?
+    responses++;
+
+    // std::cout << "Got " << responses << " for " << histogramKey
+      // << " (need " << ctx->numResponses << ")" << std::endl;
+
+    if(responses == ctx->numResponses) {
+      std::cout << "Finished histogram for " << histogramKey << std::endl;
+      break;
+    }
   }
+
+  // mark histogram as complete
+  ctx->hist->markBinAsComplete(histogramKey);
 
   // done
   return nullptr;
@@ -255,6 +278,21 @@ int main(int argc, char * argv[]) {
             abort();
         }
 
+        // name the thread, if supported
+#ifdef pthread_setname_np
+        const std::size_t nameLen = 48;
+        char name[nameLen];
+
+        memset(name, 0, nameLen);
+        snprintf(name, nameLen, "Request %d (%s)", i, patients[i].c_str());
+
+        err = pthread_setname_np(threadHandle, name);
+
+        if(err != 0) {
+          std::cout << "pthread_setname_np: " << err << std::endl;
+        }
+#endif
+
         // add it to the list
         requestThreads[i] = threadHandle;
     }
@@ -280,7 +318,8 @@ int main(int argc, char * argv[]) {
 
       ctx->hist = &hist;
       ctx->name = patients[i];
-      ctx->dataBuffer = outBuffers[i];
+      ctx->statBuffer = outBuffers[i];
+      ctx->numResponses = n;
 
       statsThreadsCtx[i] = ctx;
 
@@ -293,6 +332,21 @@ int main(int argc, char * argv[]) {
           perror("pthread_create - stats");
           abort();
       }
+
+      // name the thread, if supported
+#ifdef pthread_setname_np
+      const std::size_t nameLen = 48;
+      char name[nameLen];
+
+      memset(name, 0, nameLen);
+      snprintf(name, nameLen, "Stats %d (%s)", i, patients[i].c_str());
+
+      err = pthread_setname_np(threadHandle, name);
+
+      if(err != 0) {
+        std::cout << "pthread_setname_np: " << err << std::endl;
+      }
+#endif
 
       // add it to the list
       statsThreads[i] = threadHandle;
@@ -323,11 +377,10 @@ int main(int argc, char * argv[]) {
         memset(ctx, 0, sizeof(worker_ctx_t));
 
         // ctx->outBuffers = &outBuffers;
-        ctx->outBuffers = reinterpret_cast<BoundedBuffer **>(&outBuffers);
+        ctx->statBuffers = reinterpret_cast<BoundedBuffer **>(&outBuffers);
         ctx->requests = &requestBuffer;
         ctx->channel = workerChannel;
 
-        /// request channel to server
         workerThreadsCtx[i] = ctx;
 
         // create the thread
@@ -339,6 +392,21 @@ int main(int argc, char * argv[]) {
             perror("pthread_create - worker");
             abort();
         }
+
+        // name the thread, if supported
+#ifdef pthread_setname_np
+        const std::size_t nameLen = 48;
+        char name[nameLen];
+
+        memset(name, 0, nameLen);
+        snprintf(name, nameLen, "Worker %d", i);
+
+        err = pthread_setname_np(threadHandle, name);
+
+        if(err != 0) {
+          std::cout << "pthread_setname_np: " << err << std::endl;
+        }
+#endif
 
         // add it to the list
         workerThreads[i] = threadHandle;
@@ -366,7 +434,7 @@ int main(int argc, char * argv[]) {
     }
 
     // wait for workers to join
-    for(int i = 0; i < w; i++) {
+    /*for(int i = 0; i < w; i++) {
         // get the handle and wait for thread to join
         pthread_t handle = workerThreads[i];
 
@@ -380,14 +448,14 @@ int main(int argc, char * argv[]) {
         // delete that thread's context
         worker_ctx_t *ctx = workerThreadsCtx[i];
         free(ctx);
-    }
+    }*/
+
+    // wait for stats threads to be done
+    hist.waitForCompletion();
 
     // quit server
     chan->cwrite("quit");
     delete chan;
-
-    // wait for stats threads to be done
-    // TODO: implement
 
     // calculate difference
     time_t timeEnd = clock();

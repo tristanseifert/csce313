@@ -114,7 +114,7 @@ void BoundedBuffer::push(std::string str) {
 
   // wake up any threads waiting on the not empty condition
   // we don't use pthread_cond_broadcast since we only added one item to queue
-  err = pthread_cond_signal(&this->queueNotEmpty);
+  err = pthread_cond_broadcast(&this->queueNotEmpty);
 
   if(err != 0) {
     perror("pthread_cond_signal - queueNotEmpty");
@@ -150,7 +150,7 @@ std::string BoundedBuffer::pop() {
 
   // wake up any threads waiting on the not full condition
   // we don't use pthread_cond_broadcast since we only added one item to queue
-  err = pthread_cond_signal(&this->queueNotFull);
+  err = pthread_cond_broadcast(&this->queueNotFull);
 
   if(err != 0) {
     perror("pthread_cond_signal - queueNotFull");

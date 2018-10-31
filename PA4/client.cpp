@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <signal.h>
 
 #include "reqchannel.h"
 #include "BoundedBuffer.h"
@@ -77,6 +78,31 @@ typedef struct {
   int numResponses;
 } stats_ctx_t;
 
+/**
+ * Structure passed to the alarm handler.
+ */
+typedef struct {
+  /// Histogram to print data from
+  Histogram *hist;
+} alarm_ctx_t;
+alarm_ctx_t *g_alarmCtx = nullptr;
+
+
+
+/**
+ * Alarm handler: this is called every two seconds and will signal the status
+ * display thread.
+ */
+void AlarmHandler(int signum) {
+  // clear screen and move cursor to top
+  std::cout << "\033[2J\033[H" << std::flush;
+
+  // print the histogram
+  g_alarmCtx->hist->print();
+
+  // set alarm again
+  alarm(2);
+}
 
 
 /**
@@ -92,9 +118,6 @@ void *RequestThreadEntry(void *_ctx) {
   for(size_t i = 0; i < ctx->numRequests; i++) {
       ctx->buf->push(command);
   }
-
-  // also, push a quit command
-  // ctx->buf->push("quit");
 
   // done
   return nullptr;
@@ -244,6 +267,15 @@ int main(int argc, char * argv[]) {
     Histogram hist;
 
 
+
+    // install the alarm handler and set it to fire every 2 sec
+    g_alarmCtx = static_cast<alarm_ctx_t *>(malloc(sizeof(alarm_ctx_t)));
+    memset(g_alarmCtx, 0, sizeof(alarm_ctx_t));
+
+    g_alarmCtx->hist = &hist;
+
+    signal(SIGALRM, AlarmHandler);
+    alarm(2);
 
     // create the threads to push requests
     const size_t numPatients = 3;
@@ -433,8 +465,13 @@ int main(int argc, char * argv[]) {
         free(ctx);
     }
 
+    // push a quit command for each worker thread
+    for(int i = 0; i < w; i++) {
+      requestBuffer.push("quit");
+    }
+
     // wait for workers to join
-    /*for(int i = 0; i < w; i++) {
+    for(int i = 0; i < w; i++) {
         // get the handle and wait for thread to join
         pthread_t handle = workerThreads[i];
 
@@ -448,10 +485,14 @@ int main(int argc, char * argv[]) {
         // delete that thread's context
         worker_ctx_t *ctx = workerThreadsCtx[i];
         free(ctx);
-    }*/
+    }
 
     // wait for stats threads to be done
     hist.waitForCompletion();
+
+    // clear the alarm
+    alarm(0);
+    signal(SIGALRM, SIG_DFL);
 
     // quit server
     chan->cwrite("quit");

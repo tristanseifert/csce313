@@ -1,0 +1,6 @@
+# ignore dsym
+*.dSYM
+
+# output binaries
+client
+dataserver

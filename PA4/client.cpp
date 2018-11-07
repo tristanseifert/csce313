@@ -526,7 +526,6 @@ int main(int argc, char * argv[]) {
         stats_ctx_t *ctx = statsThreadsCtx[i];
         free(ctx);
 
-        // XXX: this sometimes gives errors, we technically leak memory now
-        // delete outBuffers[i];
+        delete outBuffers[i];
     }
 }

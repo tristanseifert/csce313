@@ -23,6 +23,7 @@
 
 #include <list>
 #include <vector>
+#include <map>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -30,6 +31,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <signal.h>
+#include <sys/select.h>
 
 #include "reqchannel.h"
 #include "BoundedBuffer.h"
@@ -56,8 +58,8 @@ typedef struct {
 	/// buffer from which to get requests
 	BoundedBuffer *requests;
 
-  /// request channel to server
-  RequestChannel *channel;
+  /// request channel sto server
+  std::vector<RequestChannel *> channels;
 
   /// output buffer list
   BoundedBuffer **statBuffers;
@@ -127,6 +129,8 @@ void *RequestThreadEntry(void *_ctx) {
  * Entry point for the worker thread.
  */
 void *WorkerThreadEntry(void *_ctx) {
+  int err;
+
   // which buffer index is for which requests
   // XXX: this sucks ass and will break if we add more patients
   const std::size_t outBufferMapLen = 3;
@@ -136,27 +140,119 @@ void *WorkerThreadEntry(void *_ctx) {
 
   worker_ctx_t *ctx = static_cast<worker_ctx_t *>(_ctx);
 
+  // this maps the last request written to a channel
+  std::map<RequestChannel *, std::string> requestMap;
+
+  // write a request to every channel
+  for(auto it = ctx->channels.begin(); it != ctx->channels.end(); it++) {
+    // do we have a request to dequeue?
+    if(!ctx->requests->isEmpty()) {
+      // yep, send it
+      std::string request = ctx->requests->pop();
+      (*it)->cwrite(request);
+
+      // we shouldn't have a quit just yet, but sorta handle it anwyays
+      if(request == "quit") {
+        delete (*it);
+        // TODO: remove from vector
+      }
+
+      requestMap[(*it)] = request;
+    } else {
+      std::cout << "ran out of requests when priming work channels" << std::endl;
+    }
+  }
+
+  // set up for the select call
+  fd_set fds;
+  FD_ZERO(&fds);
+
   // handle the requests
   while(true) {
-    std::string request = ctx->requests->pop();
-		ctx->channel->cwrite(request);
+    // make sure we monitor all open channels
+    FD_ZERO(&fds);
 
-		if(request == "quit") {
-	   	delete ctx->channel;
+    int highestFd = 0;
+
+    std::cout << "FDs: ";
+
+    for(auto it = ctx->channels.begin(); it != ctx->channels.end(); it++) {
+      int fd = (*it)->read_fd();
+
+      std::cout << fd << " ";
+
+      // store it if it's the highest fd (for select() call)
+      if(fd > highestFd) {
+        highestFd = fd;
+      }
+
+      // set it in the map
+      FD_SET(fd, &fds);
+    }
+
+    std::cout << std::endl;
+
+    // if no FDs need to be read, we're done
+    if(highestFd == 0) {
       break;
-    } else {
-      string response = ctx->channel->cread();
+    }
 
-      // figure out which index buffer the response goes into
-      for(int i = 0; i < outBufferMapLen; i++) {
-        // does the name match?
-        if(request == outBufferMap[i]) {
-          // if so, copy the response into that buffer
-          ctx->statBuffers[i]->push(response);
-          break;
+    // now, call select() and wait
+    err = select((highestFd + 1), &fds, nullptr, nullptr, nullptr);
+
+    if(err == -1) {
+      std::cout << "select() failed: " << errno << std::endl;
+      abort();
+    }
+
+    // std::cout << err << " channels ready" << std::endl;
+
+    // read from the channels
+    for(auto it = ctx->channels.begin(); it != ctx->channels.end();) {
+      int fd = (*it)->read_fd();
+
+      // did this channel get set?
+      if(FD_ISSET(fd, &fds)) {
+        // read from it
+        std::string request = requestMap[(*it)];
+        std::string response = (*it)->cread();
+
+        // figure out which index buffer the response goes into
+        for(int i = 0; i < outBufferMapLen; i++) {
+          // does the name match?
+          if(request == outBufferMap[i]) {
+            // if so, copy the response into that buffer
+            ctx->statBuffers[i]->push(response);
+            break;
+          }
+        }
+
+        // also, write a new request to it
+        request = ctx->requests->pop();
+        (*it)->cwrite(request);
+
+        requestMap[(*it)] = request;
+
+        // was this a quit request?
+        if(request == "quit") {
+          std::cout << "Closing channel " << fd << std::endl;
+
+          // remove the channel from the vector and close it
+          it = ctx->channels.erase(it);
+
+          delete (*it);
+        }
+        // if not, simply go to the next channel instead
+        else {
+          it++;
         }
       }
-		}
+      // if not, check the next one
+      else {
+        it++;
+        continue;
+      }
+    }
 
     // print info
     // std::cout << "Have " << ctx->requests->size() << " requests " << std::endl;
@@ -218,16 +314,22 @@ int main(int argc, char * argv[]) {
     int opt = 0;
     while((opt = getopt(argc, argv, "n:w:b:")) != -1) {
       switch (opt) {
-        case 'n':
+        case 'n': // number of requests per person
           n = atoi(optarg);
           break;
-        case 'w':
+        case 'w': // number of channels
           w = atoi(optarg);
           break;
-        case 'b':
+        case 'b': // bounded buffer size
           b = atoi (optarg);
           break;
       }
+    }
+
+    // w should be less than 3x n
+    if(w >= (n * 3)) {
+      std::cout << "w should be less than 3n" << std::endl;
+      return -1;
     }
 
     // if b is still the default, set default n*3
@@ -235,11 +337,11 @@ int main(int argc, char * argv[]) {
       b = n * 3;
     }
 
-    cout << "n == " << n << endl;
-    cout << "w == " << w << endl;
-    cout << "b == " << b << endl;
+    std::cout << "n == " << n << std::endl;
+    std::cout << "w == " << w << std::endl;
+    std::cout << "b == " << b << std::endl;
 
-    cout << "CLIENT STARTED:" << endl;
+    std::cout << "CLIENT STARTED:" << endl;
 
     // start time
     time_t timeStart = clock();
@@ -258,9 +360,9 @@ int main(int argc, char * argv[]) {
     }
 
     // set up the channel(s) to server
-    cout << "Establishing control channel... " << flush;
+    std::cout << "Establishing control channel... " << std::flush;
     RequestChannel *chan = new RequestChannel("control", RequestChannel::CLIENT_SIDE);
-    cout << "done." << endl << flush;
+    std::cout << "done." << std::endl << std::flush;
 
     // this is the buffer and histogram used by everything
     BoundedBuffer requestBuffer(b);
@@ -275,7 +377,7 @@ int main(int argc, char * argv[]) {
     g_alarmCtx->hist = &hist;
 
     signal(SIGALRM, AlarmHandler);
-    alarm(2);
+    // alarm(2);
 
     // create the threads to push requests
     const size_t numPatients = 3;
@@ -329,7 +431,7 @@ int main(int argc, char * argv[]) {
         requestThreads[i] = threadHandle;
     }
 
-    cout << "Done spawning request threads" << endl;
+    std::cout << "Done spawning request threads" << std::endl;
 
     // create a stats thread for each of the patients
     pthread_t statsThreads[numPatients];
@@ -384,14 +486,11 @@ int main(int argc, char * argv[]) {
       statsThreads[i] = threadHandle;
     }
 
-    cout << "Done spawning stats threads" << endl;
+    std::cout << "Done spawning stats threads" << std::endl;
 
-    // create as many worker threads as needed
-    pthread_t workerThreads[w];
-    worker_ctx_t *workerThreadsCtx[w];
-
-    memset(workerThreads, 0, sizeof(workerThreads));
-    memset(workerThreadsCtx, 0, sizeof(workerThreadsCtx));
+    // create as many channels to the server threads as needed
+    pthread_t workerThread;
+    worker_ctx_t *workerThreadCtx = new worker_ctx_t();
 
     for(int i = 0; i < w; i++) {
         // create a new request channel for the worker
@@ -404,47 +503,42 @@ int main(int argc, char * argv[]) {
   				break;
   			}
 
-        // allocate context
-        worker_ctx_t *ctx = static_cast<worker_ctx_t *>(malloc(sizeof(worker_ctx_t)));
-        memset(ctx, 0, sizeof(worker_ctx_t));
+        // add it
+        workerThreadCtx->channels.push_back(workerChannel);
+      }
 
-        // ctx->outBuffers = &outBuffers;
-        ctx->statBuffers = reinterpret_cast<BoundedBuffer **>(&outBuffers);
-        ctx->requests = &requestBuffer;
-        ctx->channel = workerChannel;
+      // now, create the worker thread
+      workerThreadCtx->statBuffers = reinterpret_cast<BoundedBuffer **>(&outBuffers);
+      workerThreadCtx->requests = &requestBuffer;
 
-        workerThreadsCtx[i] = ctx;
+      // create the thread
+      pthread_t threadHandle;
 
-        // create the thread
-        pthread_t threadHandle;
+      err = pthread_create(&threadHandle, nullptr, WorkerThreadEntry, workerThreadCtx);
 
-        err = pthread_create(&threadHandle, nullptr, WorkerThreadEntry, ctx);
-
-        if(err != 0) {
-            perror("pthread_create - worker");
-            abort();
-        }
+      if(err != 0) {
+          perror("pthread_create - worker");
+          abort();
+      }
 
         // name the thread, if supported
 #ifdef pthread_setname_np
-        const std::size_t nameLen = 48;
-        char name[nameLen];
+      const std::size_t nameLen = 48;
+      char name[nameLen];
 
-        memset(name, 0, nameLen);
-        snprintf(name, nameLen, "Worker %d", i);
+      memset(name, 0, nameLen);
+      snprintf(name, nameLen, "Worker %d", i);
 
-        err = pthread_setname_np(threadHandle, name);
+      err = pthread_setname_np(threadHandle, name);
 
-        if(err != 0) {
-          std::cout << "pthread_setname_np: " << err << std::endl;
-        }
+      if(err != 0) {
+        std::cout << "pthread_setname_np: " << err << std::endl;
+      }
 #endif
 
-        // add it to the list
-        workerThreads[i] = threadHandle;
-    }
+      workerThread = threadHandle;
 
-    std::cout << "Done spawning worker threads" << std::endl;
+    std::cout << "Done spawning worker thread" << std::endl;
 
 
 
@@ -465,27 +559,20 @@ int main(int argc, char * argv[]) {
         free(ctx);
     }
 
-    // push a quit command for each worker thread
+    // push a quit command for each worker channel
     for(int i = 0; i < w; i++) {
       requestBuffer.push("quit");
     }
 
-    // wait for workers to join
-    for(int i = 0; i < w; i++) {
-        // get the handle and wait for thread to join
-        pthread_t handle = workerThreads[i];
+    // wait for worker to join and delete its context
+    err = pthread_join(workerThread, nullptr);
 
-        err = pthread_join(handle, nullptr);
-
-        if(err != 0) {
-            perror("pthread_join - worker threads");
-            abort();
-        }
-
-        // delete that thread's context
-        worker_ctx_t *ctx = workerThreadsCtx[i];
-        free(ctx);
+    if(err != 0) {
+        perror("pthread_join - worker threads");
+        abort();
     }
+
+    delete workerThreadCtx;
 
     // wait for stats threads to be done
     hist.waitForCompletion();
@@ -505,7 +592,7 @@ int main(int argc, char * argv[]) {
     std::cout << "Took " << totalTimeSecs << " seconds " << std::endl;
 
     // print histogram machine
-    cout << "All Done!!!" << endl;
+    std::cout << "All Done!!!" << std::endl;
 
   	hist.print();
 

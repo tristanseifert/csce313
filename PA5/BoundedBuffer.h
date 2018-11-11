@@ -12,6 +12,10 @@ class BoundedBuffer {
     BoundedBuffer(int);
     ~BoundedBuffer();
 
+    bool isEmpty(void) {
+      return (this->size() == 0);
+    }
+
     int size();
     void push(std::string);
     std::string pop();

@@ -98,7 +98,7 @@ void BoundedBuffer::push(std::string str) {
 
   // wait on the "queue not full" condition
   // we access size on the queue directly bc we own the queue lock
-  while(this->q.size() > this->maxCapacity) {
+  while(this->q.size() >= this->maxCapacity) {
     // wait on condition; lock is acquired again if successful
     err = pthread_cond_wait(&this->queueNotFull, &this->queueLock);
 

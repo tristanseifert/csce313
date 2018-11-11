@@ -378,7 +378,9 @@ int main(int argc, char * argv[]) {
     std::cout << "CLIENT STARTED:" << endl;
 
     // start time
-    time_t timeStart = clock();
+    struct timeval t1, t2;
+    double elapsedTime;
+    gettimeofday(&t1, NULL);
 
     // spawn server
     pid_t server = fork();
@@ -648,10 +650,11 @@ int main(int argc, char * argv[]) {
     delete chan;
 
     // calculate difference
-    time_t timeEnd = clock();
-    double totalTimeSecs = ((double) (timeEnd - timeStart)) / CLOCKS_PER_SEC;
+    gettimeofday(&t2, NULL);
+    elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.f;
+    elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.f;
 
-    std::cout << "Took " << totalTimeSecs << " seconds " << std::endl;
+    std::cout << "Took " << (elapsedTime / 1000.f) << " seconds " << std::endl;
 
     // print histogram machine
     std::cout << "All Done!!!" << std::endl;

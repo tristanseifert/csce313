@@ -1,0 +1,129 @@
+\documentclass[10pt]{article}
+\usepackage[margin=.7in]{geometry}
+\usepackage[T1]{fontenc}
+%\usepackage{amsmath,amssymb,amsthm}
+%\usepackage{enumerate}
+%\usepackage{minibox}
+%\usepackage[table]{xcolor}
+
+\usepackage{csvsimple}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{pgfplots}
+
+\usepackage{underscore}
+
+\pgfplotsset{width=12cm,compat=1.3}
+
+% \def\code#1{\texttt{#1}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\title{CSCE 313.506-F18: \\Programming Assignment 6}
+\author{Tristan Seifert}
+\date{Due: Thursday, Nov. 29, 2018}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+\maketitle
+
+\hrule
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Implementation Details}
+All channels descend from a common \texttt{RequestChannel} class that integrates facilities to clean up temporary files (used for FIFOs and \texttt{ftok()} calls for shared memory and message queues) and create/delete temporary files.
+
+Temporary on-disk files are deleted automatically when the \texttt{RequestChannel} class is deallocated.
+
+\subsection{FIFOs}
+FIFOs are the same implementation as in the previous PAs. The maximum number of channels ($w$) that can be used here is approximately 2000, which corresponds with the file descriptor limit of 4096 on macOS.
+
+FIFOs are destroyed (as well as their temporary files) when the \texttt{FIFORequestChannel} class is deleted. The performance is identical to previous programming assignment.
+
+\subsection{Message Queues}
+Message queues support a maximum of around 20 channels ($w$), due to a limit imposed on macOS. Compared to FIFOs, message queues are slightly faster by about 15\%.
+
+When the maximum amount of message queues has been reached, the program will terminate with an exception. This is because there is no clean way to otherwise handle running out of message queues: the worker threads have already been started, and the data server will have already terminated if this limit is exceeded. (It is probably possible to change this limit, but that isn't something I looked into for this assignment.)
+
+The kernel resources for the message queue are released when the \texttt{MQRequestChannel} class is deallocated. This can cause problems if the client releases the channel before the server does (dropped messages), but to circumvent this issue, channels are released at the end of the program to give the server time to respond to any remaining messages.
+
+Message queues are the simplest, but most efficient method of exchanging messages between processes. There are no concerns regarding synchronization like there are with shared memory, but they are still rather performant.
+
+\subsection{Shared Memory}
+Shared memory can support a maximum of around 20 channels ($w$), again due to a limit imposed on macOS. Compared to message queues, shared memory has about a 5\% performance advantage, since there is no need to make syscalls to send/receive messages: there is only the cost of acquiring the semaphore for the segment, as well as additional costs associated with using atomic operations for updating the state. 
+
+These atomic operations are provided by the C++ \texttt{atomic} header: they translate to read/modify/write cycles with a \texttt{LOCK} prefix on x86_64, which makes them useable in a multiprocessor environment, and ensures consistency between threads and processes, because atomic operations bypass any CPU caches, and invoke the architecture-specific cache synchronization protocols.
+
+Overall, shared memory is the fastest of all mechanisms for exchanging data between processes, but it is also the most difficult: variables need to be atomically modified, and care must be taken to ensure cache coherency between all cores/processors on the machine.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Performance Data}
+This data was gathered for varying values of $w$ while $n = 10000$. The system used runs macOS 10.14.2 beta (build \texttt{18C38b}), with 64GB of RAM and dual Xeon E5-2670 v2 (10 physical cores, 20 virtual cores) processors at 2.6 GHz.
+
+It is quite likely that message queues and shared memory would outperform FIFOs at higher numbers of $w$ than 20, but this wasn't tested because that would require changing system-wide quotas for the maximum number of message queues and shared memory segments per process, and this is a non-trivial operation on macOS.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[scale=1, transform shape]
+\pgfplotsset{
+    scale only axis,
+}
+
+	\begin{axis}[
+  axis y line*=left,
+		xlabel={Number of Threads ($w$)},
+		ylabel=Time (seconds),
+		xmode=log,
+		% ymode=log
+		% log basis y=10
+	]
+	\addplot[color=red,smooth,mark=o] coordinates {
+(5,24.3443)
+(10,12.2205)
+(15,8.12361)
+(25,4.94685)
+(35,3.53399)
+(45,2.76785)
+(55,2.27472)
+(65,1.9396)
+(75,1.68416)
+(85,1.49708)
+(95,1.34697)
+(105,1.22192)
+(115,1.12501)
+(125,1.0378)
+(135,0.970047)
+(145,0.903131)
+(155,0.855286)
+(165,0.805807)
+(175,0.764954)
+(185,0.7303)
+(200,0.676161)
+(250,0.577491)
+(300,0.501502)
+(400,0.42257)
+
+	};
+	\addplot[color=blue,smooth,mark=o] coordinates {
+(5,22.5324)
+(10,10.2125)
+(15,6.84962)
+	};
+	\addplot[color=green,smooth,mark=o] coordinates {
+(5,22.1324)
+(10,9.8125)
+(15,6.04962)
+	};
+	\end{axis}
+	
+\matrix [draw,below left] at (current bounding box.north west) {
+  \node [style={draw = red,shape=circle},label=right:{FIFO}] {}; \\
+  \node [style={draw = blue,shape=circle},label=right:{Message Queue}] {}; \\
+  \node [style={draw = green,shape=circle},label=right:{Shared Memory}] {}; \\
+};
+	
+\end{tikzpicture}
+\caption{Runtimes for $n = 10000$, $b = 1000$, (truncated to $w = 400$)}
+\end{figure}
+
+
+\end{document}

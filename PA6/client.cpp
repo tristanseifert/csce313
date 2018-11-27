@@ -365,7 +365,7 @@ int main(int argc, char * argv[]) {
     g_alarmCtx->hist = &hist;
 
     signal(SIGALRM, AlarmHandler);
-    alarm(2);
+    // alarm(2);
 
     // create the threads to push requests
     const size_t numPatients = 3;

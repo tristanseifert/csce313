@@ -16,6 +16,11 @@ KernelSemaphore::KernelSemaphore(std::string _name, int _val) : name(_name) {
     throw std::domain_error("initial value must be less than SEM_VALUE_MAX");
   }
 
+  // make sure name is not empty
+  if(_name.length() == 0) {
+    throw std::invalid_argument("name may not be empty");
+  }
+
   // get name for semaphore
   const char *semName = this->name.c_str();
 
@@ -31,7 +36,8 @@ KernelSemaphore::KernelSemaphore(std::string _name, int _val) : name(_name) {
  * Releases the kernel semaphore.
  */
 KernelSemaphore::~KernelSemaphore() {
-
+  // ignore errors (so it can be closed on both sides)
+  sem_close(this->handle);
 }
 
 

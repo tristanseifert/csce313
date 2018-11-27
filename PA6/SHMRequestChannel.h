@@ -41,8 +41,8 @@ class SHMRequestChannel : public RequestChannel {
     void initSegment(int shmId, shm_header_t *header);
     void deallocSegment(int shmId, shm_header_t *header);
 
-    void lockSegment(shm_header_t *header);
-    void unlockSegment(shm_header_t *header);
+    int lockSegment(shm_header_t *header, bool fatal = true);
+    int unlockSegment(shm_header_t *header, bool fatal = true);
 
   private:
     /// key for shared memory region (client write)

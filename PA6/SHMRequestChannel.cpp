@@ -15,7 +15,9 @@
 #include <pthread.h>
 
 /// log message send/receives
-#define LOG_MSG                     1
+#define LOG_MSG                     0
+/// log creation/dealloc
+#define LOG_LIFECYCLE               0
 
 /**
  * Initializes the request channel.
@@ -35,7 +37,9 @@ SHMRequestChannel::SHMRequestChannel(const std::string _name, const Side _side) 
     this->handleError("shmat (client) failed");
   }
 
+#if LOG_LIFECYCLE
   std::cout << "mapped client end at " << std::hex << this->shmRegionClient << " with key " << this->keyClient << std::dec << std::endl;
+#endif
 
   this->headerClient = static_cast<shm_header_t *>(this->shmRegionClient);
 
@@ -59,7 +63,9 @@ SHMRequestChannel::SHMRequestChannel(const std::string _name, const Side _side) 
     this->handleError("shmat (server) failed");
   }
 
+#if LOG_LIFECYCLE
   std::cout << "mapped server end at " << std::hex << this->shmRegionServer << " with key " << this->keyServer << std::dec << std::endl;
+#endif
 
   this->headerServer = static_cast<shm_header_t *>(this->shmRegionServer);
 
@@ -72,13 +78,19 @@ SHMRequestChannel::SHMRequestChannel(const std::string _name, const Side _side) 
 SHMRequestChannel::~SHMRequestChannel() {
   // if refcount for client segment is zero, deallocate segment
   if(--this->headerClient->refCount == 0) {
+#if LOG_LIFECYCLE
     std::cout << "refcount is 0 for client segment, dealloc" << std::endl << std::flush;
+#endif
+
     this->deallocSegment(this->shmIdClient, this->headerClient);
   }
 
   // if refcount for server segment is zero, deallocate it
   if(--this->headerServer->refCount == 0) {
+#if LOG_LIFECYCLE
     std::cout << "refcount is 0 for server segment, dealloc" << std::endl << std::flush;
+#endif
+
     this->deallocSegment(this->shmIdServer, this->headerServer);
   }
 }
@@ -91,44 +103,45 @@ SHMRequestChannel::~SHMRequestChannel() {
 void SHMRequestChannel::initSegment(int shmId, shm_header_t *header) {
   int err;
 
+  pthread_mutexattr_t mutexAttr;
+  pthread_condattr_t condAttr;
+
   // set up magic values
   if(header->magic != kHeaderMagic) {
     header->magic = kHeaderMagic;
     header->refCount = 1;
-  }
 
-  // set up mutex attributes
-  pthread_mutexattr_t mutexAttr;
+    // set up mutex attributes
+    pthread_mutexattr_init(&mutexAttr);
+    pthread_mutexattr_setpshared(&mutexAttr, PTHREAD_PROCESS_SHARED);
 
-  pthread_mutexattr_init(&mutexAttr);
-  pthread_mutexattr_setpshared(&mutexAttr, PTHREAD_PROCESS_SHARED);
+    // allocate mutex
+    err = pthread_mutex_init(&header->messagesLock, &mutexAttr);
 
-  // allocate mutex
-  err = pthread_mutex_init(&header->messagesLock, &mutexAttr);
-
-  if(err != 0) {
-    this->handleError("pthread_mutex_init failed");
-  }
+    if(err != 0) {
+      this->handleError("pthread_mutex_init failed");
+    }
 
 
-  // set up condition variable attributes
-  pthread_condattr_t condAttr;
+    // allocate "queue not full" condition
+    pthread_condattr_init(&condAttr);
+    pthread_condattr_setpshared(&condAttr, PTHREAD_PROCESS_SHARED);
 
-  pthread_condattr_init(&condAttr);
-  pthread_condattr_setpshared(&condAttr, PTHREAD_PROCESS_SHARED);
+    err = pthread_cond_init(&header->messagesNotFull, &condAttr);
 
-  // allocate "queue not full" condition
-  err = pthread_cond_init(&header->messagesNotFull, &condAttr);
+    if(err != 0) {
+      this->handleError("pthread_cond_init - messagesNotFull failed");
+    }
 
-  if(err != 0) {
-    this->handleError("pthread_cond_init - messagesNotFull failed");
-  }
+    // allocate "queue not empty" condition
+    pthread_condattr_init(&condAttr);
+    pthread_condattr_setpshared(&condAttr, PTHREAD_PROCESS_SHARED);
 
-  // allocate "queue not empty" condition
-  err = pthread_cond_init(&header->messagesNotEmpty, &condAttr);
+    err = pthread_cond_init(&header->messagesNotEmpty, &condAttr);
 
-  if(err != 0) {
-    this->handleError("pthread_cond_init - messagesNotEmpty failed");
+    if(err != 0) {
+      this->handleError("pthread_cond_init - messagesNotEmpty failed");
+    }
   }
 }
 
@@ -163,21 +176,25 @@ void SHMRequestChannel::deallocSegment(int shmId, shm_header_t *header) {
 /**
  * Attempts to lock a shared memory segment.
  */
-void SHMRequestChannel::lockSegment(shm_header_t *header) {
+int SHMRequestChannel::lockSegment(shm_header_t *header, bool fatal) {
   int err = pthread_mutex_lock(&header->messagesLock);
-  if(err != 0) {
+  if(err != 0 && fatal) {
     this->handleError("pthread_mutex_lock failed");
   }
+
+  return err;
 }
 
 /**
  * Attempts to unlock a shared memory segment.
  */
-void SHMRequestChannel::unlockSegment(shm_header_t *header) {
+int SHMRequestChannel::unlockSegment(shm_header_t *header, bool fatal) {
   int err = pthread_mutex_unlock(&header->messagesLock);
-  if(err != 0) {
+  if(err != 0 && fatal) {
     this->handleError("pthread_mutex_unlock failed");
   }
+
+  return err;
 }
 
 

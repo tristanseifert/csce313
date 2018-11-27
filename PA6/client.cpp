@@ -171,7 +171,7 @@ void *WorkerThreadEntry(void *_ctx) {
 		ctx->channel->cwrite(request);
 
 		if(request == "quit") {
-	   	delete ctx->channel;
+	   	// delete ctx->channel;
       break;
     } else {
       std::string response = ctx->channel->cread();
@@ -365,7 +365,7 @@ int main(int argc, char * argv[]) {
     g_alarmCtx->hist = &hist;
 
     signal(SIGALRM, AlarmHandler);
-    // alarm(2);
+    alarm(2);
 
     // create the threads to push requests
     const size_t numPatients = 3;
@@ -573,8 +573,11 @@ int main(int argc, char * argv[]) {
             abort();
         }
 
-        // delete that thread's context
+        // delete that thread's context and channel
         worker_ctx_t *ctx = workerThreadsCtx[i];
+
+        delete ctx->channel;
+
         free(ctx);
     }
 
@@ -587,7 +590,6 @@ int main(int argc, char * argv[]) {
 
     // quit server
     chan->cwrite("quit");
-    delete chan;
 
     // calculate difference
     gettimeofday(&t2, NULL);
@@ -620,4 +622,7 @@ int main(int argc, char * argv[]) {
 
         delete outBuffers[i];
     }
+
+    // delete control channel
+    delete chan;
 }

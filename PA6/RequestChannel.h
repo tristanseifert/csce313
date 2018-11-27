@@ -5,7 +5,7 @@
 #define REQUESTCHANNEL_H
 
 #include <string>
-#include <stdexcept>
+#include <vector>
 
 /**
  * Enum defining the different types of request channels.
@@ -25,14 +25,11 @@ typedef enum {
 class RequestChannel {
   public:
     typedef enum {SERVER_SIDE, CLIENT_SIDE} Side;
-    typedef enum {READ_MODE, WRITE_MODE} Mode;
+    typedef enum {READ_MODE, WRITE_MODE, IGNORE_MODE} Mode;
 
   public:
-    RequestChannel(const std::string name, const Side side) {
-      this->name = name;
-      this->side = side;
-    }
-    virtual ~RequestChannel() { /* do nothing */ }
+    RequestChannel(const std::string name, const Side side);
+    virtual ~RequestChannel();
 
   public:
     static RequestChannel *createClientChannel(std::string name, channel_type_t type) {
@@ -42,6 +39,18 @@ class RequestChannel {
     static RequestChannel *createServerChannel(std::string name, channel_type_t type) {
       return RequestChannel::createChannel(name, type, SERVER_SIDE);
     }
+
+  protected:
+    void handleError(std::string description);
+
+    std::string getFileName(Mode mode = IGNORE_MODE);
+
+    void createFile(std::string name);
+    void deleteFile(std::string name);
+
+  private:
+    /// temporary files created during the execution of the program
+    std::vector<std::string> files;
 
   private:
     static RequestChannel *createChannel(std::string name, channel_type_t type, Side side);

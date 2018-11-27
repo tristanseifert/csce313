@@ -4,3 +4,8 @@
 # output binaries
 client
 dataserver
+
+# FIFO files and such
+fifo_*
+shm_*
+mq_*

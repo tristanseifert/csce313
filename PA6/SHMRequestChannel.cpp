@@ -3,7 +3,6 @@
 #include <iostream>
 #include <string>
 #include <stdexcept>
-#include <functional>
 
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -14,11 +13,10 @@
  */
 SHMRequestChannel::SHMRequestChannel(const std::string _name, const Side _side) : RequestChannel(_name, _side) {
   // create key for the SHM region
-  std::hash<std::string> hash_fn;
+  std::string filename = this->getFileName();
+  this->createFile(filename);
 
-  this->key = (key_t) (hash_fn(_name) & 0xFFFFFFFF);
-  std::cout << "key for channel '" << _name << "': "
-    << std::hex << this->key << std::endl;
+  this->key = ftok(filename.c_str(), 0);
 
   // attempt to get a handle to the shared region
   this->shm_id = shmget(this->key, kSegmentSize, IPC_CREAT | 0660);

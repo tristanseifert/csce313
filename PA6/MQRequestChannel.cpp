@@ -3,6 +3,10 @@
 #include <string>
 #include <stdexcept>
 
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
 /**
  * Initializes the request channel.
  */

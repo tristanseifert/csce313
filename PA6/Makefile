@@ -2,7 +2,7 @@
 all: dataserver client
 
 # C++ compiler flags
-CFLAGS = -g -w -Wall -O1 -std=c++11
+CFLAGS = -g -w -Wall -O1 -std=c++17
 
 # linker flags for libraries
 LIBFLAGS = -lpthread
@@ -45,4 +45,5 @@ client: client.cpp channels BoundedBuffer.o Histogram.o KernelSemaphore.o
 clean: cleanfifo
 	rm -rf *.o *.dSYM dataserver client
 cleanfifo:
-	rm -rf fifo*
+# fifo files have an underscore in them
+	rm -rf fifo_* mq_* shm_*

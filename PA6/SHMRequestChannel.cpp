@@ -16,22 +16,16 @@ SHMRequestChannel::SHMRequestChannel(const std::string _name, const Side _side) 
   std::string filename = this->getFileName();
   this->createFile(filename);
 
-  this->key = ftok(filename.c_str(), 0);
+  this->key = this->keyForFile(filename);
 
   // attempt to get a handle to the shared region
-  this->shm_id = shmget(this->key, kSegmentSize, IPC_CREAT | 0660);
-
-  if(this->shm_id == -1) {
-    perror("shmget:");
-    exit(-1);
-  }
+  this->shmId = shmget(this->key, kSegmentSize, IPC_CREAT | 0666);
 
   // try to map it
-  this->shmRegion = shmat(this->shm_id, nullptr, 0);
+  this->shmRegion = shmat(this->shmId, nullptr, 0);
 
   if(this->shmRegion == ((void *) -1)) {
-    perror("shmat:");
-    exit(-1);
+    this->handleError("shmat failed");
   }
 
   std::cout << "mapped at " << std::hex << this->shmRegion << std::endl;
@@ -80,11 +74,10 @@ void SHMRequestChannel::deallocSegment(void) {
   }
 
   // delete the segment
-  err = shmctl(this->shm_id, IPC_RMID, &buf);
+  err = shmctl(this->shmId, IPC_RMID, &buf);
 
   if(err == -1) {
-    perror("shmctl:");
-    exit(-1);
+    this->handleError("shmctl failed");
   }
 }
 

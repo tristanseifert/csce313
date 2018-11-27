@@ -42,7 +42,7 @@ class SHMRequestChannel : public RequestChannel {
     /// key for shared memory region
     key_t key;
     /// identifier for the memory region (returned by shmget())
-    int shm_id;
+    int shmId;
 
   private:
     /// start of shared memory region

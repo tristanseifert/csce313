@@ -67,7 +67,7 @@ RequestChannel *RequestChannel::createChannel(std::string name, channel_type_t t
 /**
  * Returns the filename for a temporary file to identify a channel.
  */
-std::string RequestChannel::getFileName(Mode mode) {
+std::string RequestChannel::getFileName(Side side, Mode mode) {
 	std::string pname;
 
   // append type
@@ -82,23 +82,11 @@ std::string RequestChannel::getFileName(Mode mode) {
   // append name
   pname += "_" + this->name;
 
-  // add the number to indicate which end of the channel it is for FIFOs
-  if(typeid(*this) == typeid(FIFORequestChannel)) {
-  	if(this->side == CLIENT_SIDE) {
-  		if(mode == READ_MODE) {
-  			pname += "1";
-  		} else {
-  			pname += "2";
-      }
-  	}
-  	else {
-  	/* SERVER_SIDE */
-  		if(mode == READ_MODE) {
-  			pname += "2";
-  		} else {
-  			pname += "1";
-      }
-  	}
+  // indicate side
+  if(side == CLIENT_SIDE) {
+    pname += "_client";
+  } else {
+    pname += "_server";
   }
 
 	return pname;
@@ -109,7 +97,7 @@ std::string RequestChannel::getFileName(Mode mode) {
  */
 void RequestChannel::createFile(std::string name) {
   // attempt create it
-  int fd = open(name.c_str(), O_RDWR | O_CREAT, 0660);
+  int fd = open(name.c_str(), O_RDWR | O_CREAT, 0666);
 
   if(fd < 0 && errno != EEXIST) {
     this->handleError("open failed");
@@ -134,6 +122,20 @@ void RequestChannel::deleteFile(std::string name) {
     this->handleError("unlink failed");
   }
 }
+
+/**
+ * Creates an IPC key from the given filename.
+ */
+key_t RequestChannel::keyForFile(std::string name) {
+  key_t key = ftok(name.c_str(), 0);
+
+  if(key == -1) {
+    this->handleError("ftok failed");
+  }
+
+  return key;
+}
+
 
 
 /**

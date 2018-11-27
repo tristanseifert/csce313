@@ -2,7 +2,7 @@
 all: dataserver client
 
 # C++ compiler flags
-CFLAGS = -g -w -Wall -O1 -std=c++17
+CFLAGS = -g -w -Wall -std=c++17
 
 # linker flags for libraries
 LIBFLAGS = -lpthread

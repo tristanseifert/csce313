@@ -7,6 +7,9 @@
 #include <string>
 #include <vector>
 
+#include <sys/ipc.h>
+
+
 /**
  * Enum defining the different types of request channels.
  */
@@ -43,10 +46,12 @@ class RequestChannel {
   protected:
     void handleError(std::string description);
 
-    std::string getFileName(Mode mode = IGNORE_MODE);
+    std::string getFileName(Side side = CLIENT_SIDE, Mode mode = IGNORE_MODE);
 
     void createFile(std::string name);
     void deleteFile(std::string name);
+
+    key_t keyForFile(std::string name);
 
   private:
     /// temporary files created during the execution of the program

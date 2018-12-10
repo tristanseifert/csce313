@@ -82,12 +82,12 @@ FIFORequestChannel::FIFORequestChannel(const std::string _name, const Side _side
 side_name((_side == FIFORequestChannel::SERVER_SIDE) ? "SERVER" : "CLIENT"), RequestChannel(_name, _side)
 {
 	if(_side == SERVER_SIDE) {
-		open_write_pipe(pipe_name(WRITE_MODE).c_str());
-		open_read_pipe(pipe_name(READ_MODE).c_str());
+		open_write_pipe(pipe_name(WRITE_MODE));
+		open_read_pipe(pipe_name(READ_MODE));
 	}
 	else {
-		open_read_pipe(pipe_name(READ_MODE).c_str());
-		open_write_pipe(pipe_name(WRITE_MODE).c_str());
+		open_read_pipe(pipe_name(READ_MODE));
+		open_write_pipe(pipe_name(WRITE_MODE));
 	}
 }
 
